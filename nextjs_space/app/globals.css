@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 240 10% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 10%;
+    --primary: 270 50% 30%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 93%;
+    --secondary-foreground: 240 10% 10%;
+    --muted: 240 5% 95%;
+    --muted-foreground: 240 4% 44%;
+    --accent: 270 40% 94%;
+    --accent-foreground: 270 50% 30%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 270 50% 30%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: 240 10% 8%;
+    --foreground: 0 0% 95%;
+    --card: 240 10% 11%;
+    --card-foreground: 0 0% 95%;
+    --popover: 240 10% 11%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 270 60% 60%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 240 5% 18%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 240 5% 18%;
+    --muted-foreground: 240 4% 60%;
+    --accent: 270 40% 20%;
+    --accent-foreground: 270 60% 70%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 5% 22%;
+    --input: 240 5% 22%;
+    --ring: 270 60% 60%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
+}
+
+.priority-badge {
+  @apply inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-800;
+}
+.dark .priority-badge {
+  @apply bg-amber-900/40 text-amber-300;
+}
+.overdue-badge {
+  @apply inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded bg-red-100 text-red-700;
+}
+.dark .overdue-badge {
+  @apply bg-red-900/40 text-red-300;
+}
+.due-today-badge {
+  @apply inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded bg-orange-100 text-orange-700;
+}
+.dark .due-today-badge {
+  @apply bg-orange-900/40 text-orange-300;
+}
+/* ---------- Мобильная версия и webview ---------- */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  overflow-x: clip; /* страховка от горизонтальной прокрутки всей страницы */
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-x: none;
+}
+/* убирает задержку нажатия и приближение по двойному тапу на кнопках */
+button, a, select, summary, [role='button'] { touch-action: manipulation; }
+
+/* горизонтально прокручиваемые ряды (вкладки) без видимой полосы прокрутки */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+@media (max-width: 640px) {
+  /* iOS и WebView приближают страницу при фокусе на поле со шрифтом меньше 16px */
+  input, select, textarea { font-size: 16px !important; }
+  /* заголовок виджета с метриками: на узком экране он не должен занимать полэкрана */
+  .av-title { font-size: 22px !important; max-width: none !important; }
+  .av-subtitle { font-size: 13px !important; }
+}
+
+/* Высота экрана без "прыжков" из-за адресной строки на мобильных (dvh), с запасным значением для старых webview. */
+.min-h-app { min-height: 100vh; min-height: 100dvh; }
+.max-h-modal { max-height: 90vh; max-height: 90dvh; }

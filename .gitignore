@@ -1,0 +1,22 @@
+# секреты
+.env
+.env.*
+!.env.example
+
+# зависимости и сборка
+node_modules/
+.next/
+*.tsbuildinfo
+
+# локальное
+.DS_Store
+caddy-root.crt
+.project_instructions.md
+check-*.sh
+push-to-gitlab.sh
+
+# бэкапы правок и дубли iCloud
+_backup_before_features/
+_backup_before_regress/
+* 2/
+* 2.*

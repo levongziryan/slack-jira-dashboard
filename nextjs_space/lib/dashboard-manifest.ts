@@ -1,0 +1,41 @@
+export const manifest = {
+  title: 'Slack трекер',
+  eyebrow: 'Levon Gziryan · Slack трекер',
+  subtitle: 'Метрики по упоминаниям и обещаниям.',
+  theme: 'journal' as const,
+  sources: [{ id: 'slack', label: 'Slack · devteam-24h.slack.com' }],
+  tiles: [
+    {
+      id: 'kpi_active',
+      type: 'kpi',
+      span: 3,
+      data: 'kpis',
+      where: { metric: 'active' },
+      accent: 'accent',
+    },
+    {
+      id: 'kpi_overdue',
+      type: 'kpi',
+      span: 3,
+      data: 'kpis',
+      where: { metric: 'overdue' },
+      accent: 'neg',
+    },
+    {
+      id: 'kpi_mentions7d',
+      type: 'kpi',
+      span: 3,
+      data: 'kpis',
+      where: { metric: 'mentions7d' },
+      accent: 'ink',
+    },
+    {
+      id: 'kpi_priority',
+      type: 'kpi',
+      span: 3,
+      data: 'kpis',
+      where: { metric: 'priority' },
+      accent: 'accent-2',
+    },
+  ],
+};

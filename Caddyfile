@@ -1,0 +1,7 @@
+# Локальный HTTPS для levongziryan.dash: Caddy выпускает сертификат своим внутренним CA.
+# Корневой сертификат нужно один раз добавить в связку ключей macOS (см. инструкцию).
+levongziryan.dash {
+	tls internal
+	encode zstd gzip
+	reverse_proxy app:3000
+}
