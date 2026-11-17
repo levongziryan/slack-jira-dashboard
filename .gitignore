@@ -20,3 +20,5 @@ _backup_before_features/
 _backup_before_regress/
 * 2/
 * 2.*
+
+_cleanup_*
