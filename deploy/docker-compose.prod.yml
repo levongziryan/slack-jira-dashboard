@@ -26,12 +26,15 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://dashboard:${POSTGRES_PASSWORD}@db:5432/dashboard
-    expose:
-      - "3000"
+    ports:
+      # только локально на сервере: наружу приложение отдаёт nginx
+      - "127.0.0.1:3000:3000"
     command: >
       sh -c "npx prisma migrate deploy && npm run start"
 
   proxy:
+    # не используется, пока на сервере порты 80/443 заняты nginx (запуск: --profile caddy)
+    profiles: ["caddy"]
     image: caddy:2-alpine
     restart: unless-stopped
     depends_on:
