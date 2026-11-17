@@ -41,7 +41,7 @@ export async function llmChatCompletion(body: {
   if (!key) {
     throw new Error('ANTHROPIC_API_KEY не задан в .env');
   }
-  const model = process.env.LLM_MODEL || 'claude-haiku-5-5';
+  const model = process.env.LLM_MODEL || 'claude-haiku-4-5';
 
   const systemMsg = body.messages.find((m) => m.role === 'system')?.content;
   const chatMsgs = body.messages
