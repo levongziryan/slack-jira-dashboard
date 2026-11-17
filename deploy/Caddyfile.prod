@@ -1,0 +1,5 @@
+# Публичный HTTPS: сертификат Let's Encrypt выпускается автоматически для домена из DOMAIN.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:3000
+}
