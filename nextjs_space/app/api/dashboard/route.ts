@@ -25,7 +25,14 @@ export async function GET() {
       },
     }),
     prisma.mention.count({ where: { userId: uid, deleted: false, datetime: { gte: sevenDaysAgo } } }),
-    prisma.mention.count({ where: { userId: uid, deleted: false, priority: true, datetime: { gte: sevenDaysAgo } } }),
+    // приоритетные, кроме закрытых: упоминания (не обработаны) + обещания (активные и предложения)
+    (async () => {
+      const [m, pr] = await Promise.all([
+        prisma.mention.count({ where: { userId: uid, deleted: false, priority: true, handled: false, AND: [{ OR: [{ handledSource: null }, { handledSource: { not: 'saved' } }] }] } }),
+        prisma.promise.count({ where: { userId: uid, deleted: false, priority: true, status: { in: ['active', 'suggested'] }, AND: [{ OR: [{ completedSource: null }, { completedSource: { not: 'saved' } }] }] } }),
+      ]);
+      return m + pr;
+    })(),
     // текущий месяц по сегодняшний день включительно (по Минску), по данным последней выгрузки из Slack
     prisma.mention.count({ where: { userId: uid, deleted: false, datetime: { gte: period.monthStart, lt: period.endOfToday } } }),
   ]);
@@ -34,13 +41,13 @@ export async function GET() {
     { metric: 'active', label: 'Активных обещаний', value: activeCount, format: 'integer', delta: null, delta_label: '', good_when: 'down' },
     { metric: 'overdue', label: 'Просрочено', value: overduePromises, format: 'integer', delta: null, delta_label: '', good_when: 'down' },
     { metric: 'mentions7d', label: 'Упоминаний (7д)', value: mentionsLast7, format: 'integer', delta: null, delta_label: '' },
-    { metric: 'priority', label: 'Приоритетных (7д)', value: priorityMentions, format: 'integer', delta: null, delta_label: '' },
+    { metric: 'priority', label: 'Приоритетных', value: priorityMentions, format: 'integer', delta: null, delta_label: '' },
   ];
 
   return NextResponse.json({
     data_as_of: now.toISOString(),
     title: buildDashboardTitle(activeCount, mentionsMonth, period.monthName),
-    subtitle: `Данные последней выгрузки из Slack по ${period.todayRu} включительно. Плитки: упоминания и приоритетные считаются за 7 дней.`,
+    subtitle: `Данные последней выгрузки из Slack по ${period.todayRu} включительно. Плитка упоминаний считается за 7 дней, приоритетные: все незакрытые.`,
     data: { kpis },
   });
 }

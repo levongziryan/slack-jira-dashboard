@@ -39,18 +39,23 @@ export function DashboardClient({ userName }: Props) {
   const [priorityOnly, setPriorityOnly] = useState(false);
   const [days, setDays] = useState(0);
   const [overdue, setOverdue] = useState(false);
+  const [openOnly, setOpenOnly] = useState(false);
   const priorityAll = priorityOnly && days === 0 && ['mentions', 'active', 'suggested', 'completed'].includes(tab);
+  const prioKeys = openOnly ? ['m', 'a', 's'] : ['m', 'a', 's', 'c'];
+  const prioEmpty = prioKeys.every((k) => prioCounts[k] === 0);
   const kpiSelected: KpiKey | null =
-    tab === 'active' ? (overdue ? 'overdue' : 'active')
-    : tab === 'mentions' && days === 7 ? (priorityOnly ? 'priority' : 'mentions7d')
+    priorityOnly && openOnly ? 'priority'
+    : tab === 'active' ? (overdue ? 'overdue' : 'active')
+    : tab === 'mentions' && days === 7 ? 'mentions7d'
     : null;
   const selectKpi = (key: KpiKey) => {
     const same = kpiSelected === key;
-    setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false); setDays(0); setOverdue(false);
+    setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false); setDays(0); setOverdue(false); setOpenOnly(false);
     if (key === 'active') { setTab('active'); return; }
     if (key === 'overdue') { setTab('active'); setOverdue(!same); return; }
     setTab('mentions');
-    if (!same) { setDays(7); setPriorityOnly(key === 'priority'); }
+    if (key === 'priority') { if (!same) { setPriorityOnly(true); setOpenOnly(true); } return; }
+    if (!same) setDays(7);
   };
   const [showAdd, setShowAdd] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -224,7 +229,7 @@ export function DashboardClient({ userName }: Props) {
               data-active={tab === t.key}
               onClick={() => {
                 const y = window.scrollY;
-                setTab(t.key); setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false); setDays(0); setOverdue(false);
+                setTab(t.key); setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false); setDays(0); setOverdue(false); setOpenOnly(false);
                 // Preserve scroll across the tab switch (no jump to top). Re-apply over
                 // ~500ms so the position still holds once async content has loaded and the
                 // page has grown back to full height.
@@ -292,7 +297,7 @@ export function DashboardClient({ userName }: Props) {
 
           {/* Priority toggle */}
           <button
-            onClick={() => setPriorityOnly(!priorityOnly)}
+            onClick={() => { setPriorityOnly(!priorityOnly); setOpenOnly(false); }}
             className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border transition ${
               priorityOnly
                 ? 'bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-900/40 dark:border-amber-700 dark:text-amber-300'
@@ -347,8 +352,8 @@ export function DashboardClient({ userName }: Props) {
             <MentionsSection key="pm" heading="Упоминания" reloadToken={refreshKey} search={search} channel={channel} author={person} priorityOnly hideHandled onCount={(n) => setPrio('m', n)} onChange={refresh} onPromoted={refresh} />
             <PromisesSection key="pp-a" heading="Активные обещания" reloadToken={refreshKey} status="active" search={search} channel={channel} to={person} priorityOnly onCount={(n) => setPrio('a', n)} onStatusChange={refresh} />
             <PromisesSection key="pp-s" heading="Предложения" reloadToken={refreshKey} status="suggested" search={search} channel={channel} to={person} priorityOnly onCount={(n) => setPrio('s', n)} onStatusChange={refresh} />
-            <PromisesSection key="pp-c" heading="Выполненные" reloadToken={refreshKey} status="completed" search={search} channel={channel} to={person} priorityOnly onCount={(n) => setPrio('c', n)} onStatusChange={refresh} />
-            {Object.keys(prioCounts).length >= 4 && Object.values(prioCounts).every((n) => n === 0) && (
+            {!openOnly && <PromisesSection key="pp-c" heading="Выполненные" reloadToken={refreshKey} status="completed" search={search} channel={channel} to={person} priorityOnly onCount={(n) => setPrio('c', n)} onStatusChange={refresh} />}
+            {prioEmpty && (
               <p className="text-center py-12 text-muted-foreground">Нет приоритетных записей</p>
             )}
           </div>
@@ -388,7 +393,7 @@ export function DashboardClient({ userName }: Props) {
             {tabs.slice(3).map((t) => (
               <button
                 key={t.key}
-                onClick={() => { setTab(t.key); setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false); setDays(0); setOverdue(false); setMoreOpen(false); }}
+                onClick={() => { setTab(t.key); setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false); setDays(0); setOverdue(false); setOpenOnly(false); setMoreOpen(false); }}
                 className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm ${tab === t.key ? 'text-primary font-semibold' : 'text-foreground'}`}
               >
                 {t.icon}
@@ -402,7 +407,7 @@ export function DashboardClient({ userName }: Props) {
           {tabs.slice(0, 3).map((t) => (
             <button
               key={t.key}
-              onClick={() => { setTab(t.key); setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false); setDays(0); setOverdue(false); setMoreOpen(false); }}
+              onClick={() => { setTab(t.key); setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false); setDays(0); setOverdue(false); setOpenOnly(false); setMoreOpen(false); }}
               className={`relative flex flex-1 flex-col items-center gap-0.5 pt-2 pb-1.5 text-[10px] font-medium ${tab === t.key ? 'text-primary' : 'text-muted-foreground'}`}
             >
               {t.icon}

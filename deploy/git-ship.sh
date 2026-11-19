@@ -29,10 +29,26 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_016iK6rrnh63FkGGCMPh7xgL" || echo "Нет изменений для коммита"
 git push -u origin "$BRANCH"
 
-if command -v gh >/dev/null 2>&1; then
+MERGED=0
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   gh pr create --repo "$REPO" --base main --head "$BRANCH" --title "$MSG" --body "Изменения ветки $BRANCH" || true
-  gh pr merge "$BRANCH" --repo "$REPO" --merge --delete-branch
-  git checkout -q main && git pull -q origin main
-else
-  echo "gh не установлен. Открой PR и влей в main: https://github.com/$REPO/compare/main...$BRANCH"
+  if gh pr merge "$BRANCH" --repo "$REPO" --merge --delete-branch; then MERGED=1; fi
 fi
+if [ "$MERGED" = 0 ]; then
+  echo "MR через gh не вливается, вливаю ветку в main через git (merge --no-ff)"
+  git checkout -q main
+  git pull -q --ff-only origin main || true
+  git merge --no-ff -q "$BRANCH" -m "Merge branch '$BRANCH'"
+  git push origin main
+  git push origin --delete "$BRANCH" >/dev/null 2>&1 || true
+  git branch -q -d "$BRANCH" || true
+  MERGED=1
+fi
+git checkout -q main && git pull -q --ff-only origin main || true
+# убрать уже влитые feature-ветки
+git fetch -q origin --prune
+for b in $(git branch -r --merged origin/main | sed 's# *origin/##' | grep '^feature/' || true); do
+  git push origin --delete "$b" >/dev/null 2>&1 || true
+  git branch -q -d "$b" 2>/dev/null || true
+done
+echo "ГОТОВО: $BRANCH влита в main ($(git rev-parse --short HEAD))"
