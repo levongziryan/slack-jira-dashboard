@@ -29,7 +29,7 @@ export function LoginForm() {
 
   return (
     <div className="w-full max-w-sm">
-      <div className="bg-card rounded-xl shadow-lg p-6 sm:p-8 border border-border">
+      <div className="bg-card rounded-2xl shadow-sm p-6 sm:p-8 border border-border">
         <div className="flex items-center gap-2 mb-6">
           <LogIn className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-display font-bold text-card-foreground">Вход</h1>

@@ -4,47 +4,55 @@
 
 @layer base {
   :root {
-    --background: 0 0% 98%;
-    --foreground: 240 10% 10%;
+    color-scheme: light;
+    --background: 240 24% 96%;
+    --foreground: 0 0% 0%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 10%;
+    --card-foreground: 0 0% 0%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 10%;
-    --primary: 270 50% 30%;
+    --popover-foreground: 0 0% 0%;
+    --primary: 211 100% 50%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 5% 93%;
-    --secondary-foreground: 240 10% 10%;
-    --muted: 240 5% 95%;
-    --muted-foreground: 240 4% 44%;
-    --accent: 270 40% 94%;
-    --accent-foreground: 270 50% 30%;
-    --destructive: 0 72% 51%;
+    --secondary: 240 12% 92%;
+    --secondary-foreground: 0 0% 0%;
+    --muted: 240 12% 94%;
+    --muted-foreground: 240 3% 42%;
+    --accent: 211 100% 95%;
+    --accent-foreground: 211 100% 40%;
+    --destructive: 3 100% 59%;
     --destructive-foreground: 0 0% 100%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 270 50% 30%;
-    --radius: 0.5rem;
+    --border: 240 6% 87%;
+    --input: 240 6% 85%;
+    --ring: 211 100% 50%;
+    --radius: 0.75rem;
+    --success: 137 58% 34%;
+    --warning: 24 100% 39%;
+    --primary-hex: #007AFF;
   }
   .dark {
-    --background: 240 10% 8%;
-    --foreground: 0 0% 95%;
-    --card: 240 10% 11%;
-    --card-foreground: 0 0% 95%;
-    --popover: 240 10% 11%;
-    --popover-foreground: 0 0% 95%;
-    --primary: 270 60% 60%;
-    --primary-foreground: 0 0% 4%;
-    --secondary: 240 5% 18%;
-    --secondary-foreground: 0 0% 95%;
-    --muted: 240 5% 18%;
-    --muted-foreground: 240 4% 60%;
-    --accent: 270 40% 20%;
-    --accent-foreground: 270 60% 70%;
-    --destructive: 0 72% 51%;
+    color-scheme: dark;
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 240 3% 11%;
+    --card-foreground: 0 0% 100%;
+    --popover: 240 3% 14%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 211 100% 52%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 3% 18%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 240 3% 18%;
+    --muted-foreground: 240 4% 64%;
+    --accent: 211 100% 20%;
+    --accent-foreground: 211 100% 70%;
+    --destructive: 3 100% 61%;
     --destructive-foreground: 0 0% 100%;
-    --border: 240 5% 22%;
-    --input: 240 5% 22%;
-    --ring: 270 60% 60%;
+    --border: 240 3% 23%;
+    --input: 240 3% 25%;
+    --ring: 211 100% 52%;
+    --success: 135 70% 50%;
+    --warning: 35 100% 52%;
+    --primary-hex: #0A84FF;
   }
 }
 
@@ -54,19 +62,19 @@
 }
 
 .priority-badge {
-  @apply inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-800;
+  @apply inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded-sm bg-amber-100 text-amber-800;
 }
 .dark .priority-badge {
   @apply bg-amber-900/40 text-amber-300;
 }
 .overdue-badge {
-  @apply inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded bg-red-100 text-red-700;
+  @apply inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded-sm bg-red-100 text-red-700;
 }
 .dark .overdue-badge {
   @apply bg-red-900/40 text-red-300;
 }
 .due-today-badge {
-  @apply inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded bg-orange-100 text-orange-700;
+  @apply inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded-sm bg-orange-100 text-orange-700;
 }
 .dark .due-today-badge {
   @apply bg-orange-900/40 text-orange-300;
@@ -96,3 +104,112 @@ button, a, select, summary, [role='button'] { touch-action: manipulation; }
 /* Высота экрана без "прыжков" из-за адресной строки на мобильных (dvh), с запасным значением для старых webview. */
 .min-h-app { min-height: 100vh; min-height: 100dvh; }
 .max-h-modal { max-height: 90vh; max-height: 90dvh; }
+
+/* iOS: сглаживание шрифта, плотный заголовок, нижняя панель вкладок */
+body { font-feature-settings: 'kern'; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { letter-spacing: -0.02em; }
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: hsl(var(--card) / 0.85);
+  -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  border-top: 0.5px solid hsl(var(--border));
+}
+
+/* ---------- Единая дизайн-система (iOS) ---------- */
+
+/* Видимый фокус с клавиатуры. Мышь и касания его не вызывают. */
+:where(button, a, summary, [role='button'], select, input, textarea):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offset: 0; }
+
+/* Реакция на касание: как у нативных кнопок iOS. */
+@media (hover: none) {
+  button:active:not(:disabled), a:active { opacity: 0.55; transition: opacity 0.05s; }
+}
+button { -webkit-user-select: none; user-select: none; }
+
+/* Полупрозрачные панели iOS: размытие с повышенной насыщенностью и тонкий разделитель */
+.navbar {
+  background: hsl(var(--card) / 0.8);
+  -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid hsl(var(--border));
+}
+
+/* Кнопка-иконка в панелях: 40 pt на телефоне, 36 pt на компьютере */
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  height: 2.5rem; width: 2.5rem; border-radius: 0.75rem;
+  color: hsl(var(--muted-foreground)); transition: background-color 0.15s, color 0.15s;
+}
+@media (min-width: 640px) { .icon-btn { height: 2.25rem; width: 2.25rem; } }
+.icon-btn:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+
+/* Модальные окна: на телефоне нижний лист, от 640px диалог по центру */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center;
+  background: rgb(0 0 0 / 0.4); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+}
+.modal-panel {
+  width: 100%; max-height: 90vh; max-height: 90dvh; overflow-y: auto; overscroll-behavior: contain;
+  background: hsl(var(--card)); color: hsl(var(--card-foreground));
+  border: 0.5px solid hsl(var(--border)); border-bottom: 0;
+  border-radius: 1.25rem 1.25rem 0 0; padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -8px 40px -12px rgb(0 0 0 / 0.35);
+  animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.modal-panel.flex { overflow-y: hidden; }
+@media (min-width: 640px) {
+  .modal-backdrop { align-items: center; padding: 1rem; }
+  .modal-panel { border-bottom: 0.5px solid hsl(var(--border)); border-radius: 1.25rem; padding-bottom: 0; box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.45); animation: dialog-in 0.2s ease-out; }
+}
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes dialog-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+
+/* Выпадающие списки в одном виде во всех браузерах */
+select {
+  -webkit-appearance: none; appearance: none; padding-right: 2rem !important;
+  background-repeat: no-repeat; background-position: right 0.6rem center; background-size: 0.9rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* Зоны нажатия не меньше 44 pt на сенсорных экранах */
+@media (pointer: coarse) {
+  button[class*='py-1.5'], button[class*='py-2'], select,
+  input:not([type='checkbox']):not([type='radio']):not([type='color']), textarea { min-height: 44px; }
+}
+
+/* Тонкие полосы прокрутки в цвет темы */
+* { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
+
+/* Без движения, если так просит система */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Блок KPI (встроенная библиотека графиков) приводим к токенам приложения: цвета, шрифты, скругления, обе темы. */
+html .av-root, html .av-drawer, html [data-theme] .av-root, html .av-root[data-theme], html .av-drawer[data-theme] {
+  --bg: transparent;
+  --card: hsl(var(--card));
+  --line: hsl(var(--border));
+  --ink: hsl(var(--foreground));
+  --ink-2: hsl(var(--foreground) / 0.75);
+  --muted: hsl(var(--muted-foreground));
+  --accent: var(--primary-hex);
+  --accent-2: #FF9500;
+  --accent-3: #FFCC00;
+  --pos: #34C759;
+  --neg: #FF3B30;
+  --pos-bg: rgb(52 199 89 / 0.14);
+  --neg-bg: rgb(255 59 48 / 0.14);
+  --warn-bg: rgb(255 204 0 / 0.16);
+  --shadow: none;
+  --radius: 14px;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+html .av-root .av-title { font-weight: 700; }
+html .av-root .av-eyebrow { display: none; } /* имя владельца в блоке KPI дублирует шапку */

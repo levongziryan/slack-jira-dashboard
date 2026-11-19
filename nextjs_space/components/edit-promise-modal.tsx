@@ -1,5 +1,7 @@
 'use client';
 
+import { useModal } from '@/lib/use-escape';
+
 import { useState } from 'react';
 import { X, Save } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,6 +24,7 @@ interface Props {
 }
 
 export function EditPromiseModal({ promise, onClose, onSaved }: Props) {
+  useModal(onClose);
   const [action, setAction] = useState(promise?.action ?? '');
   const [toWhom, setToWhom] = useState(promise?.toWhom ?? '');
   const [condition, setCondition] = useState(promise?.condition ?? '');
@@ -53,11 +56,11 @@ export function EditPromiseModal({ promise, onClose, onSaved }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-card rounded-xl shadow-xl border border-border w-full max-w-md max-h-modal overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-panel sm:max-w-md" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="font-display font-bold text-foreground">Редактирование: {promise?.id ?? ''}</h2>
-          <button onClick={onClose} className="p-1 rounded hover:bg-muted text-muted-foreground"><X className="h-4 w-4" /></button>
+          <button onClick={onClose} className="icon-btn"><X className="h-4 w-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-3">
           <div>
@@ -87,7 +90,7 @@ export function EditPromiseModal({ promise, onClose, onSaved }: Props) {
           </div>
           <label className="flex items-center gap-2 text-sm text-foreground">
             <input type="checkbox" checked={priority} onChange={(e) => setPriority(e.target.checked)}
-              className="rounded border-input" />
+              className="rounded-sm border-input" />
             Приоритет
           </label>
           <button type="submit" disabled={loading}

@@ -16,7 +16,9 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
-  const existing = await prisma.savedItem.findUnique({ where: { id } });
+  const uid = session.user.id;
+  const key = { userId_id: { userId: uid, id } };
+  const existing = await prisma.savedItem.findUnique({ where: key });
   if (!existing) return NextResponse.json({ error: 'Не найдено' }, { status: 404 });
 
   const data: any = {};
@@ -28,12 +30,12 @@ export async function PATCH(
     data.handledAt = body.handled ? new Date() : null;
     // Reflect close/reopen back to Slack via the Done emoji (Levon's convention).
     try {
-      const token = await getOwnerConnectorToken({ service: 'SLACK' });
+      const token = await getOwnerConnectorToken({ service: 'SLACK' }, session.user.id);
       slackSynced = await setSlackReaction(token, existing.channelId, existing.ts, 'white_check_mark', !!body.handled);
       // Обработано: пин снимаем, чтобы новый пин вернул сообщение в активные.
       if (body.handled) {
-        const { userId } = await resolveUserId(token);
-        const r = await removeSavedReactions(token, existing.channelId, existing.ts, userId);
+        const { userId: slackUid } = await resolveUserId(token);
+        const r = await removeSavedReactions(token, existing.channelId, existing.ts, slackUid);
         unpinned = r.ok;
         if (!r.ok) unpinError = r.error ?? 'неизвестная ошибка';
       }
@@ -43,10 +45,10 @@ export async function PATCH(
     }
   }
 
-  const item = await prisma.savedItem.update({ where: { id }, data });
+  const item = await prisma.savedItem.update({ where: key, data });
   if (body.handled !== undefined) {
-    if (body.handled) await ensureCompletedPromise(item);
-    else await removeCompletedPromise(item.id);
+    if (body.handled) await ensureCompletedPromise(uid, item);
+    else await removeCompletedPromise(uid, item.id);
   }
   return NextResponse.json({ ...item, slackSynced, unpinned, unpinError });
 }
@@ -62,14 +64,16 @@ export async function DELETE(
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
-  const existing = await prisma.savedItem.findUnique({ where: { id } });
+  const uid = session.user.id;
+  const key = { userId_id: { userId: uid, id } };
+  const existing = await prisma.savedItem.findUnique({ where: key });
   if (!existing) return NextResponse.json({ ok: true, removedEmoji: [] }); // уже удалено
 
   let removedEmoji: string[] = [];
   try {
-    const token = await getOwnerConnectorToken({ service: 'SLACK' });
-    const { userId } = await resolveUserId(token);
-    const r = await removeSavedReactions(token, existing.channelId, existing.ts, userId);
+    const token = await getOwnerConnectorToken({ service: 'SLACK' }, session.user.id);
+    const { userId: slackUid } = await resolveUserId(token);
+    const r = await removeSavedReactions(token, existing.channelId, existing.ts, slackUid);
     if (!r.ok) {
       return NextResponse.json(
         { error: `Не удалось снять эмодзи в Slack (${r.error ?? 'неизвестная ошибка'}). Запись не удалена.` },
@@ -84,14 +88,14 @@ export async function DELETE(
     );
   }
 
-  await prisma.savedItem.delete({ where: { id } });
+  await prisma.savedItem.delete({ where: key });
   // Если упоминание было перенесено в "Отложенные", после удаления оно возвращается в корзину.
   await prisma.promise.updateMany({
-    where: { channelId: existing.channelId, ts: existing.ts, completedSource: 'saved' },
+    where: { userId: uid, channelId: existing.channelId, ts: existing.ts, completedSource: 'saved' },
     data: { deleted: true, deletedAt: new Date(), completedSource: null },
   });
   await prisma.mention.updateMany({
-    where: { channelId: existing.channelId, ts: existing.ts, handledSource: 'saved' },
+    where: { userId: uid, channelId: existing.channelId, ts: existing.ts, handledSource: 'saved' },
     data: { deleted: true, deletedAt: new Date(), handled: false, handledAt: null, handledSource: null },
   });
   return NextResponse.json({ ok: true, removedEmoji });

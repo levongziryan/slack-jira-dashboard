@@ -10,9 +10,11 @@ function ensureTable(): Promise<void> {
   const created: Promise<void> = prisma
     .$executeRawUnsafe(
       'CREATE TABLE IF NOT EXISTS "AnalyzedMessage" (' +
+        '"userId" TEXT NOT NULL, ' +
         '"id" TEXT NOT NULL, ' +
         '"analyzedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, ' +
-        'CONSTRAINT "AnalyzedMessage_pkey" PRIMARY KEY ("id"))'
+        'CONSTRAINT "AnalyzedMessage_pkey" PRIMARY KEY ("userId","id"), ' +
+        'CONSTRAINT "AnalyzedMessage_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE)'
     )
     .then(() => undefined)
     .catch((e: unknown) => {
@@ -23,12 +25,12 @@ function ensureTable(): Promise<void> {
   return created;
 }
 
-export async function loadAnalyzedSet(ids: string[]): Promise<{ set: Set<string>; error?: string }> {
+export async function loadAnalyzedSet(userId: string, ids: string[]): Promise<{ set: Set<string>; error?: string }> {
   if (ids.length === 0) return { set: new Set<string>() };
   try {
     await ensureTable();
     const rows = await prisma.analyzedMessage.findMany({
-      where: { id: { in: ids } },
+      where: { userId, id: { in: ids } },
       select: { id: true },
     });
     return { set: new Set<string>(rows.map((r) => r.id)) };
@@ -38,12 +40,12 @@ export async function loadAnalyzedSet(ids: string[]): Promise<{ set: Set<string>
   }
 }
 
-export async function markAnalyzed(ids: string[]): Promise<{ saved: number; error?: string }> {
+export async function markAnalyzed(userId: string, ids: string[]): Promise<{ saved: number; error?: string }> {
   if (ids.length === 0) return { saved: 0 };
   try {
     await ensureTable();
     const res = await prisma.analyzedMessage.createMany({
-      data: ids.map((id) => ({ id })),
+      data: ids.map((id) => ({ userId, id })),
       skipDuplicates: true,
     });
     return { saved: res.count };

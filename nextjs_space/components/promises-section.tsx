@@ -1,5 +1,9 @@
 'use client';
 
+import { Pagination, usePagination } from '@/components/pagination';
+
+import { displayChannel } from '@/lib/channel-label';
+
 import { useState, useEffect } from 'react';
 import { SlackMarkdown } from '@/components/slack-markdown';
 import { ExternalLink, Star, Check, RotateCcw, Loader2, AlertTriangle, Clock, Pencil, X, Sparkles, Trash2 } from 'lucide-react';
@@ -28,11 +32,14 @@ interface Props {
   channel: string;
   to: string;
   priorityOnly: boolean;
+  overdueOnly?: boolean;
+  heading?: string;
+  onCount?: (n: number) => void;
   onStatusChange: () => void;
   reloadToken?: number;
 }
 
-export function PromisesSection({ status, search, channel, to, priorityOnly, onStatusChange, reloadToken }: Props) {
+export function PromisesSection({ status, search, channel, to, priorityOnly, overdueOnly = false, heading, onCount, onStatusChange, reloadToken }: Props) {
   const [promises, setPromises] = useState<PromiseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<PromiseRow | null>(null);
@@ -44,6 +51,7 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, onS
     if (channel) params.set('channel', channel);
     if (to) params.set('to', to);
     if (priorityOnly) params.set('priority', 'true');
+    if (overdueOnly) params.set('overdue', 'true');
     fetch(`/api/promises?${params.toString()}`)
       .then((r) => r.json())
       .then((d: any) => setPromises(Array.isArray(d) ? d : []))
@@ -53,7 +61,7 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, onS
 
   // Spinner only on the very first load; filter changes and background refreshes
   // (reloadToken) reload silently in-place so the scroll position is preserved.
-  useEffect(() => { load(promises.length === 0); }, [status, search, channel, to, priorityOnly, reloadToken]);
+  useEffect(() => { load(promises.length === 0); }, [status, search, channel, to, priorityOnly, overdueOnly, reloadToken]);
 
   const toggleStatus = async (id: string, newStatus: string) => {
     // Optimistic: remove item immediately so there's no scroll jump
@@ -99,12 +107,18 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, onS
     return <span className="text-xs text-muted-foreground">до {deadline}</span>;
   };
 
+  useEffect(() => { if (!loading) onCount?.(promises.length); }, [loading, promises.length]);
+  const pg = usePagination(promises, `${status}|${search}|${channel}|${to}|${priorityOnly}`);
+
+  if (loading && heading) return null;
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  if ((promises?.length ?? 0) === 0 && heading) return null;
   if ((promises?.length ?? 0) === 0) return <p className="text-center py-12 text-muted-foreground">{isSuggested ? 'Нет новых предложений. Нажмите «Обновить из Slack».' : 'Нет обещаний'}</p>;
 
   return (
     <div className="space-y-2">
-      {promises.map((p) => (
+      {heading && <h2 className="px-1 pt-2 text-sm font-semibold text-muted-foreground">{heading} · {promises.length}</h2>}
+      {pg.visible.map((p) => (
         <div
           key={p.id}
           className={`p-3 rounded-lg border transition hover:shadow-sm ${
@@ -124,7 +138,7 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, onS
                   <span className="font-mono text-xs font-bold text-primary">{p?.id ?? ''}</span>
                 )}
                 <span className="text-xs text-muted-foreground">→ {p?.toWhom ?? ''}</span>
-                <span className="text-xs text-muted-foreground">#{p?.channel ?? ''}</span>
+                <span className="text-xs text-muted-foreground">{displayChannel(p?.channel)}</span>
                 {p.priority && (
                   <span className="priority-badge flex items-center gap-0.5">
                     <Star className="h-2.5 w-2.5" />Приоритет
@@ -139,7 +153,7 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, onS
               {p?.sourceText && (
                 <details className="mt-1">
                   <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">Исходное сообщение</summary>
-                  <div className="mt-1 text-xs text-muted-foreground bg-muted/50 rounded p-2">
+                  <div className="mt-1 text-xs text-muted-foreground bg-muted/50 rounded-sm p-2">
                     <SlackMarkdown text={p.sourceText} />
                   </div>
                 </details>
@@ -152,7 +166,7 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, onS
             <div className="flex items-center gap-1 shrink-0 self-end sm:self-auto">
               <button
                 onClick={() => setEditing(p)}
-                className="p-2.5 sm:p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition"
+                className="p-2.5 sm:p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition"
                 title="Редактировать"
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -161,14 +175,14 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, onS
                 <>
                   <button
                     onClick={() => toggleStatus(p.id, 'active')}
-                    className="p-2.5 sm:p-1.5 rounded transition hover:bg-green-100 text-green-600 dark:hover:bg-green-900/30"
+                    className="p-2.5 sm:p-1.5 rounded-lg transition hover:bg-green-100 text-green-600 dark:hover:bg-green-900/30"
                     title="Принять в активные"
                   >
                     <Check className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => toggleStatus(p.id, 'rejected')}
-                    className="p-2.5 sm:p-1.5 rounded transition hover:bg-red-100 text-red-600 dark:hover:bg-red-900/30"
+                    className="p-2.5 sm:p-1.5 rounded-lg transition hover:bg-red-100 text-red-600 dark:hover:bg-red-900/30"
                     title="Отклонить"
                   >
                     <X className="h-4 w-4" />
@@ -177,7 +191,7 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, onS
               ) : (
                 <button
                   onClick={() => toggleStatus(p.id, status === 'active' ? 'completed' : 'active')}
-                  className={`p-2.5 sm:p-1.5 rounded transition ${
+                  className={`p-2.5 sm:p-1.5 rounded-lg transition ${
                     status === 'active'
                       ? 'hover:bg-green-100 text-green-600 dark:hover:bg-green-900/30'
                       : 'hover:bg-muted text-muted-foreground'
@@ -190,7 +204,7 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, onS
               {status === 'active' && (
                 <button
                   onClick={() => removePromise(p.id)}
-                  className="p-2.5 sm:p-1.5 rounded transition hover:bg-red-100 text-muted-foreground hover:text-red-600 dark:hover:bg-red-900/30"
+                  className="p-2.5 sm:p-1.5 rounded-lg transition hover:bg-red-100 text-muted-foreground hover:text-red-600 dark:hover:bg-red-900/30"
                   title="Удалить (операционка) — можно вернуть из Корзины"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -200,7 +214,7 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, onS
                 href={p?.permalink || undefined}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-2.5 sm:p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition"
+                className="p-2.5 sm:p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition"
                 title="Открыть в Slack"
               >
                 <ExternalLink className="h-4 w-4" />
@@ -209,6 +223,8 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, onS
           </div>
         </div>
       ))}
+      <Pagination {...pg.props} />
+
       {editing && (
         <EditPromiseModal
           promise={editing}

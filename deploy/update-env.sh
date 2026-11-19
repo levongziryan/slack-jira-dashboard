@@ -1,6 +1,6 @@
 #!/bin/bash
 # Переносит значения из локального .env на сервер и перезапускает приложение.
-# Серверные NEXTAUTH_URL, NEXTAUTH_SECRET, POSTGRES_PASSWORD и DOMAIN остаются прежними.
+# Серверные NEXTAUTH_URL, NEXTAUTH_SECRET, POSTGRES_PASSWORD, DOMAIN и SETTINGS_ENCRYPTION_KEY остаются прежними.
 # Запуск: bash deploy/update-env.sh
 set -euo pipefail
 
@@ -14,16 +14,18 @@ SSH="ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
 REMOTE_ENV="$($SSH "$HOST" "cat $REMOTE_DIR/.env 2>/dev/null" || true)"
 rget() { printf '%s\n' "$REMOTE_ENV" | grep -E "^$1=" | head -1 | cut -d= -f2- || true; }
 NS="$(rget NEXTAUTH_SECRET)"; [ -n "$NS" ] || NS="$(openssl rand -base64 32)"
+SK="$(rget SETTINGS_ENCRYPTION_KEY)"
 PP="$(rget POSTGRES_PASSWORD)"; [ -n "$PP" ] || { echo "На сервере нет POSTGRES_PASSWORD. Сначала выполните deploy/deploy.sh"; exit 1; }
 
 TMP="$(mktemp)"
-grep -vE '^(NEXTAUTH_URL|NEXTAUTH_SECRET|POSTGRES_PASSWORD|DOMAIN)=' .env > "$TMP" || true
+grep -vE '^(NEXTAUTH_URL|NEXTAUTH_SECRET|POSTGRES_PASSWORD|DOMAIN|SETTINGS_ENCRYPTION_KEY)=' .env > "$TMP" || true
 {
   echo ""
   echo "NEXTAUTH_URL=https://$DOMAIN"
   echo "NEXTAUTH_SECRET=$NS"
   echo "POSTGRES_PASSWORD=$PP"
   echo "DOMAIN=$DOMAIN"
+  [ -z "$SK" ] || echo "SETTINGS_ENCRYPTION_KEY=$SK"
 } >> "$TMP"
 
 $SSH "$HOST" "cp $REMOTE_DIR/.env $REMOTE_DIR/.env.bak 2>/dev/null || true"

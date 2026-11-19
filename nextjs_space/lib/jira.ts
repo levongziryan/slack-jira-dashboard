@@ -1,15 +1,23 @@
 export type JiraRole = 'assignee' | 'reporter' | 'watcher';
 
-const baseUrl = () => process.env.JIRA_BASE_URL ?? '';
-const pat    = () => process.env.JIRA_PAT ?? '';
+import { getJiraConfig } from '@/lib/config';
 
-export function jiraBaseUrl() { return baseUrl(); }
+async function cfg(userId?: string) {
+  const c = await getJiraConfig(userId);
+  if (!c) throw new Error('Jira не настроена');
+  return c;
+}
 
-export async function jiraFetch(path: string) {
-  const url = path.startsWith('http') ? path : `${baseUrl()}${path}`;
+export async function jiraBaseUrl(userId?: string): Promise<string> {
+  return (await getJiraConfig(userId))?.baseUrl ?? '';
+}
+
+export async function jiraFetch(path: string, userId?: string) {
+  const c = await cfg(userId);
+  const url = path.startsWith('http') ? path : `${c.baseUrl}${path}`;
   const res = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${pat()}`,
+      Authorization: `Bearer ${c.pat}`,
       'Content-Type': 'application/json',
     },
     cache: 'no-store',
@@ -27,6 +35,7 @@ export async function searchIssues(
   maxResults = 50,
   expand = '',
   fields = 'key,summary,status,priority,assignee,reporter,issuetype,project,updated,duedate,created',
+  userId?: string,
 ) {
   const p = new URLSearchParams({
     jql,
@@ -35,28 +44,50 @@ export async function searchIssues(
     fields,
   });
   if (expand) p.set('expand', expand);
-  return jiraFetch(`/rest/api/2/search?${p}`);
+  return jiraFetch(`/rest/api/2/search?${p}`, userId);
+}
+
+export type JiraProject = { key: string; name: string };
+
+// Проекты, доступные пользователю в Jira.
+export async function fetchProjects(userId?: string): Promise<JiraProject[]> {
+  const data = await jiraFetch('/rest/api/2/project', userId);
+  return (Array.isArray(data) ? data : [])
+    .map((p: any) => ({ key: String(p.key ?? ''), name: String(p.name ?? '') }))
+    .filter((p) => p.key)
+    .sort((a, b) => a.key.localeCompare(b.key));
 }
 
 export async function fetchIssuesByRole(
   role: JiraRole,
   statusFilter: 'open' | 'all' = 'open',
-  startAt = 0,
-  maxResults = 50,
+  userId?: string,
+  limit = 200,
 ) {
+  const { tasksProjects } = await cfg(userId);
   const rolePart =
     role === 'assignee' ? 'assignee = currentUser()'
     : role === 'reporter' ? 'reporter = currentUser()'
     : 'watcher = currentUser()';
+  const projPart = tasksProjects.length ? ` AND project in (${tasksProjects.join(',')})` : '';
   const statusPart = statusFilter === 'open' ? ' AND statusCategory != Done' : '';
-  const jql = `${rolePart}${statusPart} ORDER BY updated DESC`;
-  const data = await searchIssues(jql, startAt, maxResults);
-  return { issues: data.issues ?? [], total: data.total ?? 0, baseUrl: baseUrl() };
+  const jql = `${rolePart}${projPart}${statusPart} ORDER BY updated DESC`;
+  const issues: any[] = [];
+  let total = 0;
+  for (let start = 0; start < limit; start += 100) {
+    const data = await searchIssues(jql, start, Math.min(100, limit - start), '', undefined, userId);
+    issues.push(...(data.issues ?? []));
+    total = data.total ?? issues.length;
+    if ((data.issues ?? []).length === 0 || issues.length >= total) break;
+  }
+  return { issues, total, baseUrl: await jiraBaseUrl(userId) };
 }
 
-export async function fetchWeeklyActivity(days = 7) {
-  const jql = `project = PMD24HS AND assignee = currentUser() AND updated >= -${days}d ORDER BY updated DESC`;
-  const data = await searchIssues(jql, 0, 150, 'changelog', 'key,summary,status,priority,assignee,reporter,issuetype,project,updated,duedate,created,comment');
+export async function fetchWeeklyActivity(days = 7, userId?: string) {
+  const { reportProjects } = await cfg(userId);
+  const projPart = reportProjects.length ? ` AND project in (${reportProjects.join(',')})` : '';
+  const jql = `assignee = currentUser()${projPart} AND updated >= -${days}d ORDER BY updated DESC`;
+  const data = await searchIssues(jql, 0, 150, 'changelog', 'key,summary,status,priority,assignee,reporter,issuetype,project,updated,duedate,created,comment', userId);
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);

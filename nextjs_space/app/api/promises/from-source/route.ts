@@ -15,6 +15,7 @@ export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const uid = session.user.id;
   const body = await request.json().catch(() => ({}));
   const source = body?.source;
   const sourceId = String(body?.id ?? '');
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
   };
 
   if (source === 'mention') {
-    const m = await prisma.mention.findUnique({ where: { id: sourceId } });
+    const m = await prisma.mention.findUnique({ where: { userId_id: { userId: uid, id: sourceId } } });
     if (!m) return NextResponse.json({ error: 'Упоминание не найдено' }, { status: 404 });
     draft = {
       promiseId: `PM-${m.id}`,
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
       note: 'Создано из упоминания',
     };
   } else {
-    const s = await prisma.savedItem.findUnique({ where: { id: sourceId } });
+    const s = await prisma.savedItem.findUnique({ where: { userId_id: { userId: uid, id: sourceId } } });
     if (!s) return NextResponse.json({ error: 'Отложенное не найдено' }, { status: 404 });
     const fromTs = new Date(parseFloat(s.ts) * 1000);
     draft = {
@@ -72,14 +73,15 @@ export async function POST(request: Request) {
   }
 
   const plain = slackToPlain(draft.text);
-  const existing = await prisma.promise.findUnique({ where: { id: draft.promiseId } });
+  const existing = await prisma.promise.findUnique({ where: { userId_id: { userId: uid, id: draft.promiseId } } });
   const promise = existing
     ? await prisma.promise.update({
-        where: { id: draft.promiseId },
+        where: { userId_id: { userId: uid, id: draft.promiseId } },
         data: { status: 'active', deleted: false, deletedAt: null, completedSource: null },
       })
     : await prisma.promise.create({
         data: {
+          userId: uid,
           id: draft.promiseId,
           ts: draft.ts,
           datetime: draft.datetime,
@@ -101,12 +103,12 @@ export async function POST(request: Request) {
   // Источник уходит из своей вкладки.
   if (source === 'mention') {
     await prisma.mention.update({
-      where: { id: sourceId },
+      where: { userId_id: { userId: uid, id: sourceId } },
       data: { handled: true, handledAt: new Date(), handledSource: 'promoted', queued: false },
     });
   } else {
     await prisma.savedItem.update({
-      where: { id: sourceId },
+      where: { userId_id: { userId: uid, id: sourceId } },
       data: { handled: true, handledAt: new Date() },
     });
   }
@@ -115,9 +117,9 @@ export async function POST(request: Request) {
   let removedEmoji: string[] = [];
   if (source === 'saved') {
     try {
-      const token = await getOwnerConnectorToken({ service: 'SLACK' });
-      const { userId } = await resolveUserId(token);
-      const r = await removeSavedReactions(token, draft.channelId, draft.ts, userId);
+      const token = await getOwnerConnectorToken({ service: 'SLACK' }, uid);
+      const { userId: slackUid } = await resolveUserId(token);
+      const r = await removeSavedReactions(token, draft.channelId, draft.ts, slackUid);
       slackUnpinned = r.ok;
       removedEmoji = r.removed;
     } catch (e: any) {

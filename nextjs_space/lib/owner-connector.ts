@@ -1,14 +1,15 @@
-// Self-host: отдаёт Slack user-токен из переменной окружения вместо
-// запроса к Abacus Connector API. Сигнатура оставлена прежней, чтобы
-// вызовы getOwnerConnectorToken({ service: 'SLACK' }) по коду не трогать.
+// Отдаёт Slack user-токен из единого слоя настроек (lib/config.ts).
+// Сигнатура сохранена, чтобы вызовы getOwnerConnectorToken({ service: 'SLACK' }) по коду не менять.
+import { getSlackToken } from '@/lib/config';
 
 export async function getOwnerConnectorToken(
   body: { service: string; genericOauthService?: string; configConnector?: string },
+  userId?: string,
 ): Promise<string> {
   if (body.service === 'SLACK') {
-    const token = process.env.SLACK_USER_TOKEN;
+    const token = await getSlackToken(userId);
     if (!token) {
-      throw new Error('SLACK_USER_TOKEN is not set. Добавьте user-токен (xoxp-...) в .env.');
+      throw new Error('Slack-токен не задан. Добавьте user-токен (xoxp-...) в настройках.');
     }
     return token;
   }

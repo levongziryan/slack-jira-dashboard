@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { minskPeriod } from '@/lib/dashboard-title';
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -13,12 +14,14 @@ export async function GET(request: Request) {
   const to = searchParams.get('to');
   const search = searchParams.get('q');
   const priorityOnly = searchParams.get('priority') === 'true';
+  const overdueOnly = searchParams.get('overdue') === 'true';
 
   // completedSource 'saved' = сообщение перенесено в "Отложенные" (пин), в обещаниях не показываем
-  const where: any = { status, deleted: false, AND: [{ OR: [{ completedSource: null }, { completedSource: { not: 'saved' } }] }] };
+  const where: any = { userId: session.user.id, status, deleted: false, AND: [{ OR: [{ completedSource: null }, { completedSource: { not: 'saved' } }] }] };
   if (channel) where.channel = channel;
   if (to) where.toWhom = { contains: to, mode: 'insensitive' };
   if (priorityOnly) where.priority = true;
+  if (overdueOnly) where.deadline = { not: '', lt: minskPeriod().today };
   if (search) {
     where.OR = [
       { action: { contains: search, mode: 'insensitive' } },
@@ -41,10 +44,12 @@ export async function POST(request: Request) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json();
-  const id = `P-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`;
+  // Суффикс случайный и достаточно длинный: прежние две цифры давали коллизии id в один день.
+  const id = `P-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 8)}`;
 
   const promise = await prisma.promise.create({
     data: {
+      userId: session.user.id,
       id,
       ts: String(Date.now() / 1000),
       datetime: new Date(),

@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { signOut } from 'next-auth/react';
-import { AbacusDashboard, useDashboardData } from '@/components/viz/abacus-dashboard';
-import { manifest } from '@/lib/dashboard-manifest';
+import { useDashboardData } from '@/components/viz/abacus-dashboard';
+import { KpiTiles, type KpiKey } from '@/components/kpi-tiles';
 import { MentionsSection } from '@/components/mentions-section';
 import { SavedSection } from '@/components/saved-section';
 import { PromisesSection } from '@/components/promises-section';
@@ -14,8 +14,10 @@ import { toast } from 'sonner';
 import { RefreshButton } from '@/components/refresh-button';
 import { AddPromiseModal } from '@/components/add-promise-modal';
 import { PrioritySettingsModal } from '@/components/priority-settings-modal';
+import { ConnectionsModal } from '@/components/connections-modal';
+import { AppearanceModal } from '@/components/appearance-modal';
 import { SafeDate } from '@/components/safe-format';
-import { LogOut, MessageSquare, ListChecks, Plus, Search, Filter, Sparkles, Settings, Bookmark, Trash2, Bug, FileText } from 'lucide-react';
+import { LogOut, MessageSquare, ListChecks, Plus, Search, Filter, Sparkles, Settings, Bookmark, Trash2, Bug, FileText, KeyRound, MoreHorizontal, Palette } from 'lucide-react';
 
 interface Props { userName: string }
 
@@ -30,26 +32,46 @@ export function DashboardClient({ userName }: Props) {
       .then((d) => { if (d) setWs({ name: d.name ?? '', icon: d.icon ?? null }); })
       .catch(() => {});
   }, []);
-  const { data, dataAsOf, title, subtitle } = useDashboardData('/api/dashboard', 60_000);
-  // Заголовок и подзаголовок приходят с сервера (актуальные счётчики), статичный манифест остаётся запасным.
-  const liveManifest = useMemo(
-    () => ({ ...manifest, ...(title ? { title } : {}), ...(subtitle ? { subtitle } : {}) }),
-    [title, subtitle]
-  );
   const [tab, setTab] = useState<Tab>('active');
   const [search, setSearch] = useState('');
   const [channel, setChannel] = useState('');
   const [person, setPerson] = useState('');
   const [priorityOnly, setPriorityOnly] = useState(false);
+  const [days, setDays] = useState(0);
+  const [overdue, setOverdue] = useState(false);
+  const [openOnly, setOpenOnly] = useState(false);
+  const priorityAll = priorityOnly && days === 0 && ['mentions', 'active', 'suggested', 'completed'].includes(tab);
+  const prioKeys = openOnly ? ['m', 'a', 's'] : ['m', 'a', 's', 'c'];
+  const prioEmpty = prioKeys.every((k) => prioCounts[k] === 0);
+  const kpiSelected: KpiKey | null =
+    priorityOnly && openOnly ? 'priority'
+    : tab === 'active' ? (overdue ? 'overdue' : 'active')
+    : tab === 'mentions' && days === 7 ? 'mentions7d'
+    : null;
+  const selectKpi = (key: KpiKey) => {
+    const same = kpiSelected === key;
+    setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false); setDays(0); setOverdue(false); setOpenOnly(false);
+    if (key === 'active') { setTab('active'); return; }
+    if (key === 'overdue') { setTab('active'); setOverdue(!same); return; }
+    setTab('mentions');
+    if (key === 'priority') { if (!same) { setPriorityOnly(true); setOpenOnly(true); } return; }
+    if (!same) setDays(7);
+  };
   const [showAdd, setShowAdd] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showConnections, setShowConnections] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [filters, setFilters] = useState<{ channels: string[]; authors: string[]; recipients: string[] }>({ channels: [], authors: [], recipients: [] });
+  const { data, dataAsOf } = useDashboardData('/api/dashboard', 60_000, refreshKey);
+  const [prioCounts, setPrioCounts] = useState<Record<string, number>>({});
+  const setPrio = useCallback((k: string, n: number) => setPrioCounts((c) => (c[k] === n ? c : { ...c, [k]: n })), []);
+  const [filters, setFilters] = useState<{ channels: { value: string; label: string }[]; authors: string[]; recipients: string[] }>({ channels: [], authors: [], recipients: [] });
   const [suggestedCount, setSuggestedCount] = useState(0);
   const [savedCount, setSavedCount] = useState(0);
   const [trashCount, setTrashCount] = useState(0);
   const [autoRefreshing, setAutoRefreshing] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [showAppearance, setShowAppearance] = useState(false);
 
   useEffect(() => {
     fetch('/api/filters').then((r) => r.json()).then((d: any) => setFilters(d ?? { channels: [], authors: [], recipients: [] })).catch(() => {});
@@ -103,6 +125,8 @@ export function DashboardClient({ userName }: Props) {
     box.scrollTo({ left: el.offsetLeft - (box.clientWidth - el.offsetWidth) / 2, behavior: 'smooth' });
   }, [tab]);
 
+  // Фильтры по каналу, человеку и приоритету относятся только к упоминаниям и обещаниям.
+  const withFilters = ['mentions', 'active', 'suggested', 'completed'].includes(tab);
   const priorityChannels = ['it_managers', 'by_it_managers', 'by_pmd_casino'];
   const priorityChips = [
     { label: 'it_managers', value: 'it_managers' },
@@ -117,15 +141,15 @@ export function DashboardClient({ userName }: Props) {
     { key: 'mentions', label: 'Упоминания', icon: <MessageSquare className="h-4 w-4" /> },
     { key: 'saved', label: 'Отложенные', icon: <Bookmark className="h-4 w-4" />, badge: savedCount },
     { key: 'completed', label: 'Выполненные', icon: <ListChecks className="h-4 w-4 opacity-50" /> },
-    { key: 'jira', label: 'Jira', icon: <Bug className="h-4 w-4" /> },
-    { key: 'reports', label: 'Отчёты', icon: <FileText className="h-4 w-4" /> },
+    { key: 'jira', label: 'Задачи Jira', icon: <Bug className="h-4 w-4" /> },
+    { key: 'reports', label: 'Отчет Jira', icon: <FileText className="h-4 w-4" /> },
     { key: 'trash', label: 'Корзина', icon: <Trash2 className="h-4 w-4" />, badge: trashCount },
   ];
 
   return (
     <div className="min-h-app bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-card/80 backdrop-blur border-b border-border pt-[env(safe-area-inset-top)]">
+      <header className="navbar sticky top-0 z-30 pt-[env(safe-area-inset-top)]">
         <div className="flex items-center justify-between gap-2 px-4 py-3 max-w-7xl mx-auto">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-8 h-8 shrink-0 rounded-lg bg-primary flex items-center justify-center overflow-hidden">
@@ -151,15 +175,29 @@ export function DashboardClient({ userName }: Props) {
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <RefreshButton onDone={refresh} />
             <button
+              onClick={() => setShowAppearance(true)}
+              className="icon-btn"
+              title="Оформление"
+            >
+              <Palette className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setShowConnections(true)}
+              className="icon-btn"
+              title="Подключения"
+            >
+              <KeyRound className="h-4 w-4" />
+            </button>
+            <button
               onClick={() => setShowSettings(true)}
-              className="p-2.5 sm:p-2 rounded-lg hover:bg-muted text-muted-foreground transition"
+              className="icon-btn"
               title="Настройка приоритетов"
             >
               <Settings className="h-4 w-4" />
             </button>
             <button
               onClick={() => signOut({ redirectTo: '/login' })}
-              className="p-2.5 sm:p-2 rounded-lg hover:bg-muted text-muted-foreground transition"
+              className="icon-btn"
               title="Выйти"
             >
               <LogOut className="h-4 w-4" />
@@ -170,7 +208,7 @@ export function DashboardClient({ userName }: Props) {
 
       {/* KPI Strip via viz kit */}
       <div className="max-w-7xl mx-auto">
-        <AbacusDashboard manifest={liveManifest} data={data} dataAsOf={dataAsOf} className="" />
+        <KpiTiles rows={data?.kpis} selected={kpiSelected} onSelect={selectKpi} />
       </div>
 
       {/* Data as of */}
@@ -183,15 +221,15 @@ export function DashboardClient({ userName }: Props) {
       )}
 
       {/* Tabs */}
-      <div className="max-w-7xl mx-auto px-4 pt-4">
-        <div ref={tabsRef} className="relative flex gap-1 border-b border-border overflow-x-auto no-scrollbar -mx-4 px-4">
+      <div className="max-w-7xl mx-auto px-4 sm:pt-4">
+        <div ref={tabsRef} className="relative hidden sm:flex gap-1 border-b border-border overflow-x-auto no-scrollbar -mx-4 px-4">
           {tabs.map((t) => (
             <button
               key={t.key}
               data-active={tab === t.key}
               onClick={() => {
                 const y = window.scrollY;
-                setTab(t.key); setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false);
+                setTab(t.key); setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false); setDays(0); setOverdue(false); setOpenOnly(false);
                 // Preserve scroll across the tab switch (no jump to top). Re-apply over
                 // ~500ms so the position still holds once async content has loaded and the
                 // page has grown back to full height.
@@ -232,6 +270,7 @@ export function DashboardClient({ userName }: Props) {
             />
           </div>
 
+          {withFilters && (<>
           {/* Channel filter */}
           <select
             value={channel}
@@ -239,8 +278,8 @@ export function DashboardClient({ userName }: Props) {
             className="flex-1 min-w-0 sm:flex-none px-3 py-2.5 sm:py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
           >
             <option value="">Все каналы</option>
-            {(filters?.channels ?? []).map((c: string) => (
-              <option key={c} value={c}>{priorityChannels.includes(c) ? `⭐ ${c}` : c}</option>
+            {(filters?.channels ?? []).map((c) => (
+              <option key={c.value} value={c.value}>{priorityChannels.includes(c.value) ? `⭐ ${c.label}` : c.label}</option>
             ))}
           </select>
 
@@ -258,7 +297,7 @@ export function DashboardClient({ userName }: Props) {
 
           {/* Priority toggle */}
           <button
-            onClick={() => setPriorityOnly(!priorityOnly)}
+            onClick={() => { setPriorityOnly(!priorityOnly); setOpenOnly(false); }}
             className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border transition ${
               priorityOnly
                 ? 'bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-900/40 dark:border-amber-700 dark:text-amber-300'
@@ -266,7 +305,7 @@ export function DashboardClient({ userName }: Props) {
             }`}
           >
             <Filter className="h-3.5 w-3.5" />
-            Только приоритет
+            Приоритетное
           </button>
 
           {/* Quick filter chips */}
@@ -290,6 +329,8 @@ export function DashboardClient({ userName }: Props) {
             </button>
           ))}
 
+          </>)}
+
           {/* Add promise button */}
           {(tab === 'active' || tab === 'completed') && (
             <button
@@ -305,34 +346,88 @@ export function DashboardClient({ userName }: Props) {
 
       {/* Content — stable keys (no remount on refresh) + min-height so a loading/empty
           state can never collapse the layout and clamp the scroll to the top. */}
-      <div className="max-w-7xl mx-auto px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] min-h-app">
-        {tab === 'mentions' && (
-          <MentionsSection key="m" reloadToken={refreshKey} search={search} channel={channel} author={person} priorityOnly={priorityOnly} hideHandled onPromoted={refresh} />
+      <div className={`max-w-7xl mx-auto px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-[calc(2rem+env(safe-area-inset-bottom))] min-h-app`}>
+        {priorityAll && (
+          <div key="prio" className="space-y-4">
+            <MentionsSection key="pm" heading="Упоминания" reloadToken={refreshKey} search={search} channel={channel} author={person} priorityOnly hideHandled onCount={(n) => setPrio('m', n)} onChange={refresh} onPromoted={refresh} />
+            <PromisesSection key="pp-a" heading="Активные обещания" reloadToken={refreshKey} status="active" search={search} channel={channel} to={person} priorityOnly onCount={(n) => setPrio('a', n)} onStatusChange={refresh} />
+            <PromisesSection key="pp-s" heading="Предложения" reloadToken={refreshKey} status="suggested" search={search} channel={channel} to={person} priorityOnly onCount={(n) => setPrio('s', n)} onStatusChange={refresh} />
+            {!openOnly && <PromisesSection key="pp-c" heading="Выполненные" reloadToken={refreshKey} status="completed" search={search} channel={channel} to={person} priorityOnly onCount={(n) => setPrio('c', n)} onStatusChange={refresh} />}
+            {prioEmpty && (
+              <p className="text-center py-12 text-muted-foreground">Нет приоритетных записей</p>
+            )}
+          </div>
+        )}
+        {!priorityAll && tab === 'mentions' && (
+          <MentionsSection key="m" onChange={refresh} reloadToken={refreshKey} search={search} channel={channel} author={person} priorityOnly={priorityOnly} days={days} hideHandled={days === 0} onPromoted={refresh} />
         )}
         {tab === 'saved' && (
           <SavedSection key="sv" reloadToken={refreshKey} search={search} hideHandled onPromoted={refresh} onDeleted={refresh} />
         )}
-        {tab === 'active' && (
-          <PromisesSection key="pa" reloadToken={refreshKey} status="active" search={search} channel={channel} to={person} priorityOnly={priorityOnly} onStatusChange={refresh} />
+        {!priorityAll && tab === 'active' && (
+          <PromisesSection key="pa" reloadToken={refreshKey} status="active" search={search} channel={channel} to={person} priorityOnly={priorityOnly} overdueOnly={overdue} onStatusChange={refresh} />
         )}
-        {tab === 'suggested' && (
+        {!priorityAll && tab === 'suggested' && (
           <PromisesSection key="ps" reloadToken={refreshKey} status="suggested" search={search} channel={channel} to={person} priorityOnly={priorityOnly} onStatusChange={refresh} />
         )}
-        {tab === 'completed' && (
+        {!priorityAll && tab === 'completed' && (
           <PromisesSection key="pc" reloadToken={refreshKey} status="completed" search={search} channel={channel} to={person} priorityOnly={priorityOnly} onStatusChange={refresh} />
         )}
         {tab === 'jira' && (
-          <JiraSection key="ji" reloadToken={refreshKey} search={search} />
+          <JiraSection key="ji" search={search} />
         )}
         {tab === 'reports' && (
-          <WeeklyReportSection key="rp" reloadToken={refreshKey} />
+          <WeeklyReportSection key="rp" search={search} />
         )}
         {tab === 'trash' && (
           <TrashSection key="tr" reloadToken={refreshKey} search={search} onChange={refresh} />
         )}
       </div>
 
+
+      {/* Нижняя панель вкладок (iOS), только на телефонах */}
+      {moreOpen && <div className="sm:hidden fixed inset-0 z-40" onClick={() => setMoreOpen(false)} />}
+      <nav className="tabbar sm:hidden" aria-label="Разделы">
+        {moreOpen && (
+          <div className="absolute bottom-[calc(100%+0.5rem)] right-3 z-50 w-56 rounded-2xl border border-border bg-popover p-1 shadow-lg">
+            {tabs.slice(3).map((t) => (
+              <button
+                key={t.key}
+                onClick={() => { setTab(t.key); setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false); setDays(0); setOverdue(false); setOpenOnly(false); setMoreOpen(false); }}
+                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm ${tab === t.key ? 'text-primary font-semibold' : 'text-foreground'}`}
+              >
+                {t.icon}
+                <span className="flex-1 text-left">{t.label}</span>
+                {t.badge ? <span className="rounded-full bg-primary px-1.5 text-xs font-bold text-primary-foreground">{t.badge}</span> : null}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex">
+          {tabs.slice(0, 3).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => { setTab(t.key); setChannel(''); setPerson(''); setSearch(''); setPriorityOnly(false); setDays(0); setOverdue(false); setOpenOnly(false); setMoreOpen(false); }}
+              className={`relative flex flex-1 flex-col items-center gap-0.5 pt-2 pb-1.5 text-[10px] font-medium ${tab === t.key ? 'text-primary' : 'text-muted-foreground'}`}
+            >
+              {t.icon}
+              <span className="max-w-full truncate px-1">{t.key === 'active' ? 'Активные' : t.label}</span>
+              {t.badge ? <span className="absolute left-1/2 top-1 ml-2 min-w-[1rem] rounded-full bg-destructive px-1 text-[10px] font-bold leading-4 text-destructive-foreground">{t.badge}</span> : null}
+            </button>
+          ))}
+          <button
+            onClick={() => setMoreOpen((v) => !v)}
+            className={`flex flex-1 flex-col items-center gap-0.5 pt-2 pb-1.5 text-[10px] font-medium ${tabs.slice(3).some((t) => t.key === tab) || moreOpen ? 'text-primary' : 'text-muted-foreground'}`}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+            <span>Ещё</span>
+          </button>
+        </div>
+      </nav>
+
       {showAdd && <AddPromiseModal onClose={() => setShowAdd(false)} onCreated={refresh} />}
+      {showAppearance && <AppearanceModal onClose={() => setShowAppearance(false)} />}
+      {showConnections && <ConnectionsModal onClose={() => setShowConnections(false)} onSaved={refresh} />}
       {showSettings && <PrioritySettingsModal onClose={() => setShowSettings(false)} onChanged={refresh} />}
     </div>
   );

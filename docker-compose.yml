@@ -29,7 +29,7 @@ services:
       # только с этого компьютера: наружу приложение выходит через proxy
       - "127.0.0.1:3000:3000"
     command: >
-      sh -c "npx prisma migrate deploy && npm run start"
+      sh -c "npx prisma db execute --file prisma/sql/001_multitenant.sql --schema prisma/schema.prisma && npm run start"
 
   proxy:
     image: caddy:2-alpine

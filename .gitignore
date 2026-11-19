@@ -22,3 +22,12 @@ _backup_before_regress/
 * 2.*
 
 _cleanup_*
+
+# бэкапы базы
+backups/
+_backup_*
+
+# личные архивы и архивы
+_archive_*/
+*.tgz
+deploy/*.log

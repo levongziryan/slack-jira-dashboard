@@ -29,14 +29,14 @@ type SavedLite = {
 
 // Обработанное отложенное попадает в "Выполненные" как обещание PB-<id> со статусом completed.
 // Если обещание PB-<id> уже активное (перенесено через "в активные"), его не трогаем.
-export async function ensureCompletedPromise(s: SavedLite): Promise<'created' | 'updated' | 'skipped'> {
+export async function ensureCompletedPromise(userId: string, s: SavedLite): Promise<'created' | 'updated' | 'skipped'> {
   const pid = `PB-${s.id}`;
-  const ex = await prisma.promise.findUnique({ where: { id: pid } });
+  const ex = await prisma.promise.findUnique({ where: { userId_id: { userId, id: pid } } });
   if (ex) {
     if (ex.status === 'completed' && !ex.deleted) return 'skipped';
     if (ex.status !== 'completed' && !ex.deleted) return 'skipped';
     await prisma.promise.update({
-      where: { id: pid },
+      where: { userId_id: { userId, id: pid } },
       data: { status: 'completed', deleted: false, deletedAt: null, completedSource: 'manual' },
     });
     return 'updated';
@@ -45,6 +45,7 @@ export async function ensureCompletedPromise(s: SavedLite): Promise<'created' | 
   const plain = slackToPlain(s.text);
   await prisma.promise.create({
     data: {
+      userId,
       id: pid,
       ts: s.ts,
       datetime: Number.isNaN(fromTs.getTime()) ? s.savedAt : fromTs,
@@ -67,6 +68,6 @@ export async function ensureCompletedPromise(s: SavedLite): Promise<'created' | 
 }
 
 // Отложенное вернули в работу: созданное при закрытии выполненное обещание убираем, чтобы не было дубля.
-export async function removeCompletedPromise(savedId: string): Promise<void> {
-  await prisma.promise.deleteMany({ where: { id: `PB-${savedId}`, status: 'completed', completedSource: 'manual' } });
+export async function removeCompletedPromise(userId: string, savedId: string): Promise<void> {
+  await prisma.promise.deleteMany({ where: { userId, id: `PB-${savedId}`, status: 'completed', completedSource: 'manual' } });
 }

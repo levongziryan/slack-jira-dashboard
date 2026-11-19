@@ -24,15 +24,13 @@ interface Report {
   total: number;
   generatedAt: string;
   fallback?: boolean;
+  days?: number;
 }
 
-interface Props {
-  reloadToken: number;
-}
-
-export function WeeklyReportSection({ reloadToken }: Props) {
+export function WeeklyReportSection({ search }: { search: string }) {
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
   const [days, setDays] = useState(7);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -41,9 +39,13 @@ export function WeeklyReportSection({ reloadToken }: Props) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/jira/weekly-report?days=${days}`);
+      const res = await fetch('/api/jira/weekly-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days }),
+      });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      if (!res.ok || data.error) throw new Error(data.error ?? 'Ошибка генерации отчёта');
       setReport(data);
     } catch (e: any) {
       setError(e.message ?? 'Ошибка генерации отчёта');
@@ -52,11 +54,30 @@ export function WeeklyReportSection({ reloadToken }: Props) {
     }
   }
 
-  // Auto-generate on first load
+  // При открытии вкладки показываем последний сохранённый отчёт из базы. Jira и модель не вызываются.
   useEffect(() => {
-    if (!report && !loading) generate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reloadToken]);
+    fetch('/api/jira/weekly-report')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.report) {
+          setReport(d.report);
+          if (d.report.days) setDays(d.report.days);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  // Поиск по ключу, названию, статусу, активности и следующим шагам
+  const q = search.trim().toLowerCase();
+  const sections = (report?.sections ?? [])
+    .map((sec) => ({
+      ...sec,
+      issues: q
+        ? sec.issues.filter((i) => [i.key, i.summary, i.status, i.activity, i.nextAction].some((v) => (v ?? '').toLowerCase().includes(q)))
+        : sec.issues,
+    }))
+    .filter((sec) => sec.issues.length > 0);
 
   const toggleProject = (project: string) => {
     setCollapsed(prev => {
@@ -85,9 +106,9 @@ export function WeeklyReportSection({ reloadToken }: Props) {
           onChange={e => setDays(Number(e.target.value))}
           className="px-3 py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
         >
+          <option value={3}>За последние 3 дня</option>
           <option value={7}>За последние 7 дней</option>
           <option value={14}>За последние 14 дней</option>
-          <option value={3}>За последние 3 дня</option>
         </select>
         <button
           onClick={generate}
@@ -122,6 +143,13 @@ export function WeeklyReportSection({ reloadToken }: Props) {
       )}
 
       {/* Report */}
+      {!loading && loaded && !report && !error && (
+        <div className="text-center py-12 text-muted-foreground">
+          <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+          <p className="text-sm">Отчёт ещё не сформирован. Выберите период и нажмите "Сгенерировать отчёт".</p>
+        </div>
+      )}
+
       {!loading && report && report.sections.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -129,9 +157,15 @@ export function WeeklyReportSection({ reloadToken }: Props) {
         </div>
       )}
 
-      {!loading && report && report.sections.length > 0 && (
+      {!loading && report && report.sections.length > 0 && sections.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground">
+          <p className="text-sm">По запросу ничего не найдено</p>
+        </div>
+      )}
+
+      {!loading && report && sections.length > 0 && (
         <div className="space-y-4">
-          {report.sections.map(section => {
+          {sections.map(section => {
             const isCollapsed = collapsed.has(section.project);
             return (
               <div key={section.project} className="border border-border rounded-lg overflow-hidden">

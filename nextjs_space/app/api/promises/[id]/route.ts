@@ -15,7 +15,8 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
-  const existing = await prisma.promise.findUnique({ where: { id } });
+  const key = { userId_id: { userId: session.user.id, id } };
+  const existing = await prisma.promise.findUnique({ where: key });
   if (!existing) return NextResponse.json({ error: 'Обещание не найдено' }, { status: 404 });
 
   const data: any = {};
@@ -46,12 +47,12 @@ export async function PATCH(
     const ts = existing.ts;
     if (channelId && ts) {
       try {
-        const token = await getOwnerConnectorToken({ service: 'SLACK' });
+        const token = await getOwnerConnectorToken({ service: 'SLACK' }, session.user.id);
         slackSynced = await setSlackReaction(token, channelId, ts, 'white_check_mark', completed);
       } catch { slackSynced = false; }
     }
   }
 
-  const promise = await prisma.promise.update({ where: { id }, data });
+  const promise = await prisma.promise.update({ where: key, data });
   return NextResponse.json({ ...promise, slackSynced });
 }
