@@ -33,11 +33,13 @@ interface Props {
   to: string;
   priorityOnly: boolean;
   overdueOnly?: boolean;
+  heading?: string;
+  onCount?: (n: number) => void;
   onStatusChange: () => void;
   reloadToken?: number;
 }
 
-export function PromisesSection({ status, search, channel, to, priorityOnly, overdueOnly = false, onStatusChange, reloadToken }: Props) {
+export function PromisesSection({ status, search, channel, to, priorityOnly, overdueOnly = false, heading, onCount, onStatusChange, reloadToken }: Props) {
   const [promises, setPromises] = useState<PromiseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<PromiseRow | null>(null);
@@ -105,13 +107,17 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, ove
     return <span className="text-xs text-muted-foreground">до {deadline}</span>;
   };
 
+  useEffect(() => { if (!loading) onCount?.(promises.length); }, [loading, promises.length]);
   const pg = usePagination(promises, `${status}|${search}|${channel}|${to}|${priorityOnly}`);
 
+  if (loading && heading) return null;
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  if ((promises?.length ?? 0) === 0 && heading) return null;
   if ((promises?.length ?? 0) === 0) return <p className="text-center py-12 text-muted-foreground">{isSuggested ? 'Нет новых предложений. Нажмите «Обновить из Slack».' : 'Нет обещаний'}</p>;
 
   return (
     <div className="space-y-2">
+      {heading && <h2 className="px-1 pt-2 text-sm font-semibold text-muted-foreground">{heading} · {promises.length}</h2>}
       {pg.visible.map((p) => (
         <div
           key={p.id}

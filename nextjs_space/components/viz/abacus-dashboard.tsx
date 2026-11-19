@@ -174,7 +174,7 @@ export type DashboardPayload = { data: VizData; data_as_of?: string; title?: str
  * Polls a JSON route that returns `{ data: { <key>: rows[] }, data_as_of }` and keeps the dashboard live.
  * `refreshMs` 0 fetches once.
  */
-export function useDashboardData(url: string, refreshMs = 60_000) {
+export function useDashboardData(url: string, refreshMs = 60_000, reloadToken = 0) {
   const [state, setState] = useState<{ data: VizData; dataAsOf?: string; title?: string; subtitle?: string; error?: string }>({ data: {} });
   useEffect(() => {
     let alive = true;
@@ -194,6 +194,6 @@ export function useDashboardData(url: string, refreshMs = 60_000) {
       alive = false;
       if (id !== undefined) window.clearInterval(id);
     };
-  }, [url, refreshMs]);
+  }, [url, refreshMs, reloadToken]);
   return state;
 }

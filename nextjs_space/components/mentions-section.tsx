@@ -30,11 +30,14 @@ interface Props {
   priorityOnly: boolean;
   hideHandled: boolean;
   days?: number;
+  heading?: string;
+  onCount?: (n: number) => void;
+  onChange?: () => void;
   reloadToken?: number;
   onPromoted?: () => void;
 }
 
-export function MentionsSection({ search, channel, author, priorityOnly, hideHandled, days = 0, reloadToken, onPromoted }: Props) {
+export function MentionsSection({ search, channel, author, priorityOnly, hideHandled, days = 0, heading, onCount, onChange, reloadToken, onPromoted }: Props) {
   const [mentions, setMentions] = useState<MentionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const inflight = useRef<Set<string>>(new Set());
@@ -77,6 +80,7 @@ export function MentionsSection({ search, channel, author, priorityOnly, hideHan
     } else {
       toast.success('Упоминание возвращено');
     }
+    onChange?.();
   };
 
   // Перенос в активные обещания: упоминание исчезает сразу, запросы идут параллельно, при ошибке возвращается.
@@ -121,18 +125,23 @@ export function MentionsSection({ search, channel, author, priorityOnly, hideHan
         body: JSON.stringify({ deleted: true }),
       });
       toast.success('Удалено. Вернуть можно во вкладке «Корзина».');
+      onChange?.();
     } catch {
       toast.error('Не удалось удалить');
     }
   };
 
+  useEffect(() => { if (!loading) onCount?.(mentions.length); }, [loading, mentions.length]);
   const pg = usePagination(mentions, `${search}|${channel}|${author}|${priorityOnly}`);
 
+  if (loading && heading) return null;
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  if ((mentions?.length ?? 0) === 0 && heading) return null;
   if ((mentions?.length ?? 0) === 0) return <p className="text-center py-12 text-muted-foreground">Нет упоминаний</p>;
 
   return (
     <div className="space-y-2">
+      {heading && <h2 className="px-1 pt-2 text-sm font-semibold text-muted-foreground">{heading} · {mentions.length}</h2>}
       {pg.visible.map((m) => (
         <div
           key={m.id}

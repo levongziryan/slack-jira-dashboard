@@ -32,7 +32,6 @@ export function DashboardClient({ userName }: Props) {
       .then((d) => { if (d) setWs({ name: d.name ?? '', icon: d.icon ?? null }); })
       .catch(() => {});
   }, []);
-  const { data, dataAsOf, title, subtitle } = useDashboardData('/api/dashboard', 60_000);
   const [tab, setTab] = useState<Tab>('active');
   const [search, setSearch] = useState('');
   const [channel, setChannel] = useState('');
@@ -40,6 +39,7 @@ export function DashboardClient({ userName }: Props) {
   const [priorityOnly, setPriorityOnly] = useState(false);
   const [days, setDays] = useState(0);
   const [overdue, setOverdue] = useState(false);
+  const priorityAll = priorityOnly && days === 0 && ['mentions', 'active', 'suggested', 'completed'].includes(tab);
   const kpiSelected: KpiKey | null =
     tab === 'active' ? (overdue ? 'overdue' : 'active')
     : tab === 'mentions' && days === 7 ? (priorityOnly ? 'priority' : 'mentions7d')
@@ -56,6 +56,9 @@ export function DashboardClient({ userName }: Props) {
   const [showSettings, setShowSettings] = useState(false);
   const [showConnections, setShowConnections] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const { data, dataAsOf } = useDashboardData('/api/dashboard', 60_000, refreshKey);
+  const [prioCounts, setPrioCounts] = useState<Record<string, number>>({});
+  const setPrio = useCallback((k: string, n: number) => setPrioCounts((c) => (c[k] === n ? c : { ...c, [k]: n })), []);
   const [filters, setFilters] = useState<{ channels: { value: string; label: string }[]; authors: string[]; recipients: string[] }>({ channels: [], authors: [], recipients: [] });
   const [suggestedCount, setSuggestedCount] = useState(0);
   const [savedCount, setSavedCount] = useState(0);
@@ -297,7 +300,7 @@ export function DashboardClient({ userName }: Props) {
             }`}
           >
             <Filter className="h-3.5 w-3.5" />
-            Только приоритет
+            Приоритетное
           </button>
 
           {/* Quick filter chips */}
@@ -339,19 +342,30 @@ export function DashboardClient({ userName }: Props) {
       {/* Content — stable keys (no remount on refresh) + min-height so a loading/empty
           state can never collapse the layout and clamp the scroll to the top. */}
       <div className={`max-w-7xl mx-auto px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-[calc(2rem+env(safe-area-inset-bottom))] min-h-app`}>
-        {tab === 'mentions' && (
-          <MentionsSection key="m" reloadToken={refreshKey} search={search} channel={channel} author={person} priorityOnly={priorityOnly} days={days} hideHandled={days === 0} onPromoted={refresh} />
+        {priorityAll && (
+          <div key="prio" className="space-y-4">
+            <MentionsSection key="pm" heading="Упоминания" reloadToken={refreshKey} search={search} channel={channel} author={person} priorityOnly hideHandled onCount={(n) => setPrio('m', n)} onChange={refresh} onPromoted={refresh} />
+            <PromisesSection key="pp-a" heading="Активные обещания" reloadToken={refreshKey} status="active" search={search} channel={channel} to={person} priorityOnly onCount={(n) => setPrio('a', n)} onStatusChange={refresh} />
+            <PromisesSection key="pp-s" heading="Предложения" reloadToken={refreshKey} status="suggested" search={search} channel={channel} to={person} priorityOnly onCount={(n) => setPrio('s', n)} onStatusChange={refresh} />
+            <PromisesSection key="pp-c" heading="Выполненные" reloadToken={refreshKey} status="completed" search={search} channel={channel} to={person} priorityOnly onCount={(n) => setPrio('c', n)} onStatusChange={refresh} />
+            {Object.keys(prioCounts).length >= 4 && Object.values(prioCounts).every((n) => n === 0) && (
+              <p className="text-center py-12 text-muted-foreground">Нет приоритетных записей</p>
+            )}
+          </div>
+        )}
+        {!priorityAll && tab === 'mentions' && (
+          <MentionsSection key="m" onChange={refresh} reloadToken={refreshKey} search={search} channel={channel} author={person} priorityOnly={priorityOnly} days={days} hideHandled={days === 0} onPromoted={refresh} />
         )}
         {tab === 'saved' && (
           <SavedSection key="sv" reloadToken={refreshKey} search={search} hideHandled onPromoted={refresh} onDeleted={refresh} />
         )}
-        {tab === 'active' && (
+        {!priorityAll && tab === 'active' && (
           <PromisesSection key="pa" reloadToken={refreshKey} status="active" search={search} channel={channel} to={person} priorityOnly={priorityOnly} overdueOnly={overdue} onStatusChange={refresh} />
         )}
-        {tab === 'suggested' && (
+        {!priorityAll && tab === 'suggested' && (
           <PromisesSection key="ps" reloadToken={refreshKey} status="suggested" search={search} channel={channel} to={person} priorityOnly={priorityOnly} onStatusChange={refresh} />
         )}
-        {tab === 'completed' && (
+        {!priorityAll && tab === 'completed' && (
           <PromisesSection key="pc" reloadToken={refreshKey} status="completed" search={search} channel={channel} to={person} priorityOnly={priorityOnly} onStatusChange={refresh} />
         )}
         {tab === 'jira' && (
