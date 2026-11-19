@@ -64,7 +64,7 @@ export async function getJiraConfig(userId?: string): Promise<JiraConfig | null>
 export async function getLlmConfig(userId?: string): Promise<LlmConfig | null> {
   const apiKey = await value(userId, 'ANTHROPIC_API_KEY');
   if (!apiKey) return null;
-  return { apiKey, model: (await value(userId, 'LLM_MODEL')) || 'claude-haiku-4-5' };
+  return { apiKey, model: (await value(userId, 'LLM_MODEL')) || 'claude-haiku-5-5' };
 }
 
 // Секрет для подписи ссылок. В production без NEXTAUTH_SECRET подпись была бы подделываемой.

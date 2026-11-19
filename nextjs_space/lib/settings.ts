@@ -7,7 +7,7 @@ export const SETTING_DEFS = {
   SLACK_USER_TOKEN: { secret: true, service: 'slack', label: 'Slack User OAuth Token', pattern: /^xoxp-[A-Za-z0-9-]{10,}$/, hint: 'xoxp-...' },
   SLACK_CHANNELS: { secret: false, service: 'slack', label: 'Каналы для мониторинга (пусто: все)', pattern: /^[CGDM][A-Z0-9]{6,}(\s*,\s*[CGDM][A-Z0-9]{6,})*$/i, hint: 'выберите из списка' },
   ANTHROPIC_API_KEY: { secret: true, service: 'llm', label: 'Anthropic API key', pattern: /^sk-ant-[A-Za-z0-9_-]{10,}$/, hint: 'sk-ant-...' },
-  LLM_MODEL: { secret: false, service: 'llm', label: 'Модель', pattern: /^[A-Za-z0-9._-]{3,80}$/, hint: 'claude-haiku-4-5' },
+  LLM_MODEL: { secret: false, service: 'llm', label: 'Модель', pattern: /^[A-Za-z0-9._-]{3,80}$/, hint: 'claude-haiku-5-5' },
   JIRA_BASE_URL: { secret: false, service: 'jira', label: 'Адрес Jira', pattern: /^https?:\/\/[^\s]+$/, hint: 'https://jira.example.com' },
   JIRA_PAT: { secret: true, service: 'jira', label: 'Jira Personal Access Token', pattern: /^[^\s]{8,300}$/, hint: '' },
   JIRA_TASKS_PROJECTS: { secret: false, service: 'jira', label: 'Проекты для вкладки "Задачи Jira" (ключи через запятую)', pattern: /^[A-Z][A-Z0-9_]{1,19}(\s*,\s*[A-Z][A-Z0-9_]{1,19})*$/i, hint: 'ABC, XYZ (пусто: все проекты)' },
