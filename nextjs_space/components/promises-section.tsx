@@ -1,10 +1,10 @@
 'use client';
 
-import { Pagination, usePagination } from '@/components/pagination';
+import { Pagination, useServerPagination } from '@/components/pagination';
 
 import { displayChannel } from '@/lib/channel-label';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { SlackMarkdown } from '@/components/slack-markdown';
 import { ExternalLink, Star, Check, RotateCcw, Loader2, AlertTriangle, Clock, Pencil, X, Sparkles, Trash2 } from 'lucide-react';
 import { EditPromiseModal } from '@/components/edit-promise-modal';
@@ -43,25 +43,34 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, ove
   const [promises, setPromises] = useState<PromiseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<PromiseRow | null>(null);
+  const seq = useRef(0);
+  const pg = useServerPagination(`${status}|${search}|${channel}|${to}|${priorityOnly}|${overdueOnly}`);
 
   const load = (showSpinner = false) => {
     if (showSpinner) setLoading(true);
+    const mySeq = ++seq.current;
     const params = new URLSearchParams({ status });
     if (search) params.set('q', search);
     if (channel) params.set('channel', channel);
     if (to) params.set('to', to);
     if (priorityOnly) params.set('priority', 'true');
     if (overdueOnly) params.set('overdue', 'true');
+    params.set('offset', String(pg.skip));
+    params.set('limit', String(pg.take));
     fetch(`/api/promises?${params.toString()}`)
       .then((r) => r.json())
-      .then((d: any) => setPromises(Array.isArray(d) ? d : []))
+      .then((d: any) => {
+        if (mySeq !== seq.current) return;
+        setPromises(Array.isArray(d?.items) ? d.items : []);
+        pg.setTotal(Number(d?.total) || 0);
+      })
       .catch(() => setPromises([]))
       .finally(() => setLoading(false));
   };
 
   // Spinner only on the very first load; filter changes and background refreshes
   // (reloadToken) reload silently in-place so the scroll position is preserved.
-  useEffect(() => { load(promises.length === 0); }, [status, search, channel, to, priorityOnly, overdueOnly, reloadToken]);
+  useEffect(() => { load(promises.length === 0); }, [status, search, channel, to, priorityOnly, overdueOnly, reloadToken, pg.skip, pg.take]);
 
   const toggleStatus = async (id: string, newStatus: string) => {
     // Optimistic: remove item immediately so there's no scroll jump
@@ -107,18 +116,18 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, ove
     return <span className="text-xs text-muted-foreground">до {deadline}</span>;
   };
 
-  useEffect(() => { if (!loading) onCount?.(promises.length); }, [loading, promises.length]);
-  const pg = usePagination(promises, `${status}|${search}|${channel}|${to}|${priorityOnly}`);
+  useEffect(() => { if (!loading) onCount?.(pg.total); }, [loading, pg.total]);
 
   if (loading && heading) return null;
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  if ((promises?.length ?? 0) === 0 && pg.total > 0) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   if ((promises?.length ?? 0) === 0 && heading) return null;
   if ((promises?.length ?? 0) === 0) return <p className="text-center py-12 text-muted-foreground">{isSuggested ? 'Нет новых предложений. Нажмите «Обновить из Slack».' : 'Нет обещаний'}</p>;
 
   return (
     <div className="space-y-2">
-      {heading && <h2 className="px-1 pt-2 text-sm font-semibold text-muted-foreground">{heading} · {promises.length}</h2>}
-      {pg.visible.map((p) => (
+      {heading && <h2 className="px-1 pt-2 text-sm font-semibold text-muted-foreground">{heading} · {pg.total}</h2>}
+      {promises.map((p) => (
         <div
           key={p.id}
           className={`p-3 rounded-lg border transition hover:shadow-sm ${

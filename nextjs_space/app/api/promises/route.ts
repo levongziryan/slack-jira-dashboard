@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { minskPeriod } from '@/lib/dashboard-title';
+import { readPaging } from '@/lib/paging';
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -30,12 +31,21 @@ export async function GET(request: Request) {
     ];
   }
 
-  const promises = await prisma.promise.findMany({
-    where,
-    orderBy: [{ priority: 'desc' }, { datetime: 'desc' }],
-    take: 200,
-  });
+  if (searchParams.get('count') === '1') {
+    return NextResponse.json({ total: await prisma.promise.count({ where }) });
+  }
 
+  const paging = readPaging(searchParams);
+  const orderBy: any = [{ priority: 'desc' }, { datetime: 'desc' }, { id: 'asc' }];
+  if (paging) {
+    const [items, total] = await Promise.all([
+      prisma.promise.findMany({ where, orderBy, skip: paging.offset, take: paging.limit }),
+      prisma.promise.count({ where }),
+    ]);
+    return NextResponse.json({ items, total });
+  }
+
+  const promises = await prisma.promise.findMany({ where, orderBy, take: 200 });
   return NextResponse.json(promises);
 }
 

@@ -17,9 +17,9 @@ export type PaginationProps = {
   onSize: (n: number) => void;
 };
 
-// Постраничный вывод: номера страниц, "Загрузить ещё" (добавляет следующую страницу к показанным) и выбор размера страницы.
+// Состояние страниц: номера страниц, "Загрузить ещё" (добавляет следующую страницу к показанным) и выбор размера страницы.
 // Размер страницы общий для всех списков и запоминается на устройстве. resetKey сбрасывает на первую страницу (смена фильтров).
-export function usePagination<T>(items: T[], resetKey = '') {
+function usePageState(total: number, resetKey: string) {
   const [pageSize, setPageSize] = useState<number>(15);
   const [start, setStart] = useState(1);
   const [page, setPage] = useState(1);
@@ -31,17 +31,15 @@ export function usePagination<T>(items: T[], resetKey = '') {
     } catch {}
   }, []);
 
-  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   useEffect(() => { setStart(1); setPage(1); }, [resetKey, pageSize]);
   useEffect(() => {
     if (page > totalPages) { setPage(totalPages); setStart((s) => Math.min(s, totalPages)); }
   }, [page, totalPages]);
 
-  const visible = useMemo(() => items.slice((start - 1) * pageSize, page * pageSize), [items, start, page, pageSize]);
-
   const props: PaginationProps = {
-    total: items.length,
+    total,
     pageSize,
     page,
     start,
@@ -50,7 +48,27 @@ export function usePagination<T>(items: T[], resetKey = '') {
     onMore: () => setPage((p) => Math.min(totalPages, p + 1)),
     onSize: (n) => { setPageSize(n); try { localStorage.setItem(SIZE_KEY, String(n)); } catch {} },
   };
+  return { pageSize, start, page, props };
+}
+
+// Постраничный вывод по уже загруженному списку (Jira: снимок из базы).
+export function usePagination<T>(items: T[], resetKey = '') {
+  const { pageSize, start, page, props } = usePageState(items.length, resetKey);
+  const visible = useMemo(() => items.slice((start - 1) * pageSize, page * pageSize), [items, start, page, pageSize]);
   return { visible, props };
+}
+
+// Постраничный вывод с сервера: сервер отдаёт только показанное окно (skip/take) и общее число.
+export function useServerPagination(resetKey = '') {
+  const [total, setTotal] = useState(0);
+  const { pageSize, start, page, props } = usePageState(total, resetKey);
+  return {
+    skip: (start - 1) * pageSize,
+    take: (page - start + 1) * pageSize,
+    total,
+    setTotal,
+    props,
+  };
 }
 
 function pageList(current: number, total: number): (number | '…')[] {

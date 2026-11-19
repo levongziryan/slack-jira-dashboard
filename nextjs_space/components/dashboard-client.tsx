@@ -101,17 +101,17 @@ export function DashboardClient({ userName }: Props) {
   }, []);
 
   useEffect(() => {
-    fetch('/api/promises?status=suggested')
+    fetch('/api/promises?status=suggested&count=1')
       .then((r) => r.json())
-      .then((d: any) => setSuggestedCount(Array.isArray(d) ? d.length : 0))
+      .then((d: any) => setSuggestedCount(Number(d?.total) || 0))
       .catch(() => {});
-    fetch('/api/saved-items?handled=false')
+    fetch('/api/saved-items?handled=false&count=1')
       .then((r) => r.json())
-      .then((d: any) => setSavedCount(Array.isArray(d) ? d.length : 0))
+      .then((d: any) => setSavedCount(Number(d?.total) || 0))
       .catch(() => {});
-    fetch('/api/trash')
+    fetch('/api/trash?count=1')
       .then((r) => r.json())
-      .then((d: any) => setTrashCount((Array.isArray(d?.mentions) ? d.mentions.length : 0) + (Array.isArray(d?.promises) ? d.promises.length : 0)))
+      .then((d: any) => setTrashCount(Number(d?.total) || 0))
       .catch(() => {});
   }, [refreshKey]);
 

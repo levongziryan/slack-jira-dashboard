@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { readPaging } from '@/lib/paging';
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -31,11 +32,20 @@ export async function GET(request: Request) {
     ];
   }
 
-  const mentions = await prisma.mention.findMany({
-    where,
-    orderBy: [{ handled: 'asc' }, { priority: 'desc' }, { datetime: 'desc' }],
-    take: 200,
-  });
+  if (searchParams.get('count') === '1') {
+    return NextResponse.json({ total: await prisma.mention.count({ where }) });
+  }
 
+  const paging = readPaging(searchParams);
+  const orderBy: any = [{ handled: 'asc' }, { priority: 'desc' }, { datetime: 'desc' }, { id: 'asc' }];
+  if (paging) {
+    const [items, total] = await Promise.all([
+      prisma.mention.findMany({ where, orderBy, skip: paging.offset, take: paging.limit }),
+      prisma.mention.count({ where }),
+    ]);
+    return NextResponse.json({ items, total });
+  }
+
+  const mentions = await prisma.mention.findMany({ where, orderBy, take: 200 });
   return NextResponse.json(mentions);
 }
