@@ -9,7 +9,7 @@ const VALID = ['channel', 'author', 'thread'];
 export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const rules = await prisma.priorityRule.findMany({ orderBy: [{ type: 'asc' }, { createdAt: 'asc' }] });
+  const rules = await prisma.priorityRule.findMany({ where: { userId: session.user.id }, orderBy: [{ type: 'asc' }, { createdAt: 'asc' }] });
   return NextResponse.json(rules);
 }
 
@@ -24,10 +24,10 @@ export async function POST(request: Request) {
   if (!value) return NextResponse.json({ error: 'Укажите значение' }, { status: 400 });
 
   const rule = await prisma.priorityRule.create({
-    data: { type, value, label: String(body?.label ?? '').trim() },
+    data: { userId: session.user.id, type, value, label: String(body?.label ?? '').trim() },
   });
 
   // Re-evaluate existing mentions against the new rule set.
-  const changed = await reconcileMentionPriority();
+  const changed = await reconcileMentionPriority(session.user.id);
   return NextResponse.json({ rule, reconciled: changed }, { status: 201 });
 }

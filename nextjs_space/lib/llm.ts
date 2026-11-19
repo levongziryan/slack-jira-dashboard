@@ -12,8 +12,10 @@
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 
-export function llmConfigured() {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+import { getLlmConfig } from '@/lib/config';
+
+export async function llmConfigured(userId?: string): Promise<boolean> {
+  return Boolean(await getLlmConfig(userId));
 }
 
 // Claude, в отличие от OpenAI json_object, не гарантирует чистый JSON:
@@ -36,12 +38,13 @@ export async function llmChatCompletion(body: {
   max_tokens?: number;
   temperature?: number;
   response_format?: { type: string };
-}) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    throw new Error('ANTHROPIC_API_KEY не задан в .env');
+}, userId?: string) {
+  const conf = await getLlmConfig(userId);
+  if (!conf) {
+    throw new Error('Ключ Anthropic не задан');
   }
-  const model = process.env.LLM_MODEL || 'claude-haiku-4-5';
+  const key = conf.apiKey;
+  const model = conf.model;
 
   const systemMsg = body.messages.find((m) => m.role === 'system')?.content;
   const chatMsgs = body.messages

@@ -8,24 +8,26 @@ export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const uid = session.user.id;
   const now = new Date();
   const period = minskPeriod(now);
   const today = period.today;
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
 
   const [activeCount, overduePromises, mentionsLast7, priorityMentions, mentionsMonth] = await Promise.all([
-    prisma.promise.count({ where: { status: 'active', deleted: false } }),
+    prisma.promise.count({ where: { userId: uid, status: 'active', deleted: false } }),
     prisma.promise.count({
       where: {
+        userId: uid,
         status: 'active',
         deleted: false,
         deadline: { not: '', lt: today },
       },
     }),
-    prisma.mention.count({ where: { deleted: false, datetime: { gte: sevenDaysAgo } } }),
-    prisma.mention.count({ where: { deleted: false, priority: true, datetime: { gte: sevenDaysAgo } } }),
+    prisma.mention.count({ where: { userId: uid, deleted: false, datetime: { gte: sevenDaysAgo } } }),
+    prisma.mention.count({ where: { userId: uid, deleted: false, priority: true, datetime: { gte: sevenDaysAgo } } }),
     // текущий месяц по сегодняшний день включительно (по Минску), по данным последней выгрузки из Slack
-    prisma.mention.count({ where: { deleted: false, datetime: { gte: period.monthStart, lt: period.endOfToday } } }),
+    prisma.mention.count({ where: { userId: uid, deleted: false, datetime: { gte: period.monthStart, lt: period.endOfToday } } }),
   ]);
 
   const kpis = [

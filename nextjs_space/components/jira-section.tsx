@@ -1,7 +1,10 @@
 'use client';
 
+import { Pagination, usePagination } from '@/components/pagination';
+
 import { useState, useEffect } from 'react';
-import { ExternalLink, User, Eye, PenTool, ChevronDown, AlertCircle } from 'lucide-react';
+import { ExternalLink, User, Eye, PenTool, ChevronDown, AlertCircle, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 import { SafeDate } from '@/components/safe-format';
 
 type Role = 'assignee' | 'reporter' | 'watcher';
@@ -25,7 +28,6 @@ interface JiraIssue {
 
 interface Props {
   search: string;
-  reloadToken: number;
 }
 
 const ROLE_TABS: { key: Role; label: string; icon: React.ReactNode }[] = [
@@ -48,33 +50,32 @@ function priorityColor(name: string) {
   return 'text-blue-600 dark:text-blue-400';
 }
 
-export function JiraSection({ search, reloadToken }: Props) {
+export function JiraSection({ search }: Props) {
   const [role, setRole] = useState<Role>('assignee');
   const [issues, setIssues] = useState<JiraIssue[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [baseUrl, setBaseUrl] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
-  const [page, setPage] = useState(0);
   const [error, setError] = useState('');
+  const [cached, setCached] = useState(true);
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [counts, setCounts] = useState<Record<Role, number | null>>({ assignee: null, reporter: null, watcher: null });
 
-  async function load(reset = false) {
-    const p = reset ? 0 : page;
-    if (reset) setPage(0);
+  // Чтение из базы: в Jira не обращается.
+  async function loadSaved() {
     setError('');
     try {
-      const res = await fetch(`/api/jira/issues?role=${role}&status=${statusFilter}&page=${p}`);
+      const res = await fetch(`/api/jira/issues?role=${role}&status=${statusFilter}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      if (reset || p === 0) {
-        setIssues(data.issues ?? []);
-      } else {
-        setIssues(prev => [...prev, ...(data.issues ?? [])]);
-      }
+      setIssues(data.issues ?? []);
       setTotal(data.total ?? 0);
       setBaseUrl(data.baseUrl ?? '');
-      setCounts(prev => ({ ...prev, [role]: data.total ?? 0 }));
+      setCached(Boolean(data.cached));
+      setFetchedAt(data.fetchedAt ?? null);
+      setCounts(data.counts ?? { assignee: null, reporter: null, watcher: null });
     } catch (e: any) {
       setError(e.message ?? 'Ошибка загрузки');
     } finally {
@@ -82,11 +83,31 @@ export function JiraSection({ search, reloadToken }: Props) {
     }
   }
 
+  // Обращение к Jira только по кнопке.
+  async function refreshFromJira() {
+    setRefreshing(true);
+    setError('');
+    try {
+      const res = await fetch('/api/jira/issues', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: statusFilter }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? 'Не удалось обновить');
+      await loadSaved();
+      toast.success('Задачи обновлены из Jira');
+    } catch (e: any) {
+      setError(e.message ?? 'Ошибка обновления');
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   useEffect(() => {
-    setLoading(issues.length === 0);
-    load(true);
+    loadSaved();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, statusFilter, reloadToken]);
+  }, [role, statusFilter]);
 
   const filtered = search
     ? issues.filter(i =>
@@ -96,7 +117,7 @@ export function JiraSection({ search, reloadToken }: Props) {
       )
     : issues;
 
-  const canLoadMore = issues.length < total;
+  const pg = usePagination(filtered, `${role}|${statusFilter}|${search}`);
 
   return (
     <div className="space-y-4">
@@ -137,6 +158,24 @@ export function JiraSection({ search, reloadToken }: Props) {
         </div>
       </div>
 
+      {/* Обновление из Jira и время последнего снимка */}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={refreshFromJira}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Обновляю...' : 'Обновить'}
+        </button>
+        {fetchedAt && (
+          <span className="text-xs text-muted-foreground">
+            Обновлено: <SafeDate date={fetchedAt} options={{ dateStyle: 'medium', timeStyle: 'short' }} localize />
+            {cached && total > issues.length ? ` • загружено ${issues.length} из ${total}` : ''}
+          </span>
+        )}
+      </div>
+
       {/* Error */}
       {error && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm">
@@ -155,13 +194,13 @@ export function JiraSection({ search, reloadToken }: Props) {
       {/* Issues list */}
       {!loading && filtered.length === 0 && !error && (
         <div className="text-center py-12 text-muted-foreground">
-          <p className="text-sm">Нет задач</p>
+          <p className="text-sm">{cached ? 'Нет задач' : 'Данные ещё не загружены. Нажмите "Обновить".'}</p>
         </div>
       )}
 
       {!loading && filtered.length > 0 && (
         <div className="space-y-2">
-          {filtered.map(issue => {
+          {pg.visible.map(issue => {
             const f = issue.fields;
             const catName = f.status?.statusCategory?.name ?? f.status?.statusCategory?.key ?? '';
             const isOverdue = f.duedate && new Date(f.duedate) < new Date() && catName !== 'done' && catName !== 'Выполнено';
@@ -221,18 +260,7 @@ export function JiraSection({ search, reloadToken }: Props) {
         </div>
       )}
 
-      {/* Load more */}
-      {!loading && canLoadMore && (
-        <div className="text-center">
-          <button
-            onClick={() => { setPage(p => p + 1); load(false); }}
-            className="inline-flex items-center gap-1 px-4 py-2 text-sm rounded-lg border border-input bg-background hover:bg-muted transition"
-          >
-            <ChevronDown className="h-4 w-4" />
-            Загрузить ещё ({issues.length} из {total})
-          </button>
-        </div>
-      )}
+      {!loading && <Pagination {...pg.props} />}
     </div>
   );
 }

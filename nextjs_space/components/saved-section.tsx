@@ -1,5 +1,9 @@
 'use client';
 
+import { Pagination, usePagination } from '@/components/pagination';
+
+import { displayChannel } from '@/lib/channel-label';
+
 import { useState, useEffect, useRef } from 'react';
 import { SlackMarkdown } from '@/components/slack-markdown';
 import { ExternalLink, Loader2, Check, RotateCcw, Clock, Bookmark, ListPlus, Trash2 } from 'lucide-react';
@@ -127,6 +131,8 @@ export function SavedSection({ search, hideHandled, reloadToken, onPromoted, onD
     }
   };
 
+  const pg = usePagination(items, search);
+
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   if ((items?.length ?? 0) === 0) return (
     <div className="text-center py-12 text-muted-foreground">
@@ -138,7 +144,7 @@ export function SavedSection({ search, hideHandled, reloadToken, onPromoted, onD
 
   return (
     <div className="space-y-2">
-      {items.map((m) => {
+      {pg.visible.map((m) => {
         const overdue = m.reminderAt && new Date(m.reminderAt).getTime() < Date.now() && !m.handled;
         return (
         <div
@@ -155,7 +161,7 @@ export function SavedSection({ search, hideHandled, reloadToken, onPromoted, onD
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <span className="font-semibold text-sm text-foreground">{m?.author || 'Сообщение'}</span>
-                {m?.channel && <span className="text-xs text-muted-foreground">в #{m.channel}</span>}
+                {m?.channel && <span className="text-xs text-muted-foreground">в {displayChannel(m.channel)}</span>}
                 <span className="text-xs text-muted-foreground">
                   <SafeDate date={m?.savedAt} options={{ dateStyle: 'medium', timeStyle: 'short' }} localize />
                 </span>
@@ -177,7 +183,7 @@ export function SavedSection({ search, hideHandled, reloadToken, onPromoted, onD
               {!m.handled && (
                 <button
                   onClick={() => promote(m.id)}
-                  className="p-2.5 sm:p-1.5 rounded transition hover:bg-blue-100 text-blue-600 dark:hover:bg-blue-900/30 disabled:opacity-50"
+                  className="p-2.5 sm:p-1.5 rounded-lg transition hover:bg-blue-100 text-blue-600 dark:hover:bg-blue-900/30 disabled:opacity-50"
                   title="Перенести в активные обещания (эмодзи в Slack будет снят)"
                 >
                   <ListPlus className="h-4 w-4" />
@@ -185,7 +191,7 @@ export function SavedSection({ search, hideHandled, reloadToken, onPromoted, onD
               )}
               <button
                 onClick={() => toggleHandled(m.id, !m.handled)}
-                className={`p-2.5 sm:p-1.5 rounded transition ${
+                className={`p-2.5 sm:p-1.5 rounded-lg transition ${
                   m.handled
                     ? 'hover:bg-muted text-muted-foreground'
                     : 'hover:bg-green-100 text-green-600 dark:hover:bg-green-900/30'
@@ -196,7 +202,7 @@ export function SavedSection({ search, hideHandled, reloadToken, onPromoted, onD
               </button>
               <button
                 onClick={() => remove(m.id)}
-                className="p-2.5 sm:p-1.5 rounded transition hover:bg-red-100 text-muted-foreground hover:text-red-600 dark:hover:bg-red-900/30 disabled:opacity-50"
+                className="p-2.5 sm:p-1.5 rounded-lg transition hover:bg-red-100 text-muted-foreground hover:text-red-600 dark:hover:bg-red-900/30 disabled:opacity-50"
                 title="Удалить и снять эмодзи в Slack"
               >
                 <Trash2 className="h-4 w-4" />
@@ -205,7 +211,7 @@ export function SavedSection({ search, hideHandled, reloadToken, onPromoted, onD
                 href={m?.permalink || undefined}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-2.5 sm:p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition"
+                className="p-2.5 sm:p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition"
                 title="Открыть в Slack"
               >
                 <ExternalLink className="h-4 w-4" />
@@ -215,6 +221,7 @@ export function SavedSection({ search, hideHandled, reloadToken, onPromoted, onD
         </div>
         );
       })}
+      <Pagination {...pg.props} />
     </div>
   );
 }

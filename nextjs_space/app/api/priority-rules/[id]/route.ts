@@ -12,11 +12,10 @@ export async function DELETE(
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
-  try {
-    await prisma.priorityRule.delete({ where: { id } });
-  } catch {
+  const removed = await prisma.priorityRule.deleteMany({ where: { id, userId: session.user.id } });
+  if (removed.count === 0) {
     return NextResponse.json({ error: 'Правило не найдено' }, { status: 404 });
   }
-  const changed = await reconcileMentionPriority();
+  const changed = await reconcileMentionPriority(session.user.id);
   return NextResponse.json({ ok: true, reconciled: changed });
 }

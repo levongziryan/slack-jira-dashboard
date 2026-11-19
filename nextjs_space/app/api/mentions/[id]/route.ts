@@ -15,7 +15,8 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
-  const existing = await prisma.mention.findUnique({ where: { id } });
+  const key = { userId_id: { userId: session.user.id, id } };
+  const existing = await prisma.mention.findUnique({ where: key });
   if (!existing) return NextResponse.json({ error: 'Упоминание не найдено' }, { status: 404 });
 
   const data: any = {};
@@ -34,11 +35,11 @@ export async function PATCH(
     if (handled) data.queued = false;
     // Reflect close/reopen back to Slack via the Done emoji (Levon's convention).
     try {
-      const token = await getOwnerConnectorToken({ service: 'SLACK' });
+      const token = await getOwnerConnectorToken({ service: 'SLACK' }, session.user.id);
       slackSynced = await setSlackReaction(token, existing.channelId, existing.ts, 'white_check_mark', handled);
     } catch { slackSynced = false; }
   }
 
-  const mention = await prisma.mention.update({ where: { id }, data });
+  const mention = await prisma.mention.update({ where: key, data });
   return NextResponse.json({ ...mention, slackSynced });
 }

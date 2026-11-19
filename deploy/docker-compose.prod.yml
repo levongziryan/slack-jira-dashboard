@@ -30,7 +30,7 @@ services:
       # только локально на сервере: наружу приложение отдаёт nginx
       - "127.0.0.1:3000:3000"
     command: >
-      sh -c "npx prisma migrate deploy && npm run start"
+      sh -c "npx prisma db execute --file prisma/sql/001_multitenant.sql --schema prisma/schema.prisma && npm run start"
 
   proxy:
     # не используется, пока на сервере порты 80/443 заняты nginx (запуск: --profile caddy)

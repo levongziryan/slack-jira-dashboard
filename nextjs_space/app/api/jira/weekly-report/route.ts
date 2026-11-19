@@ -2,8 +2,10 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
+import { getJiraConfig } from '@/lib/config';
 import { fetchWeeklyActivity, jiraBaseUrl } from '@/lib/jira';
 import { llmChatCompletion } from '@/lib/llm';
+import { readCache, writeCache } from '@/lib/jira-cache';
 
 interface ReportIssue {
   key: string;
@@ -18,22 +20,18 @@ interface ReportSection {
   issues: ReportIssue[];
 }
 
-export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (!process.env.JIRA_BASE_URL || !process.env.JIRA_PAT) {
-    return NextResponse.json({ error: 'Jira не настроена' }, { status: 500 });
+async function generate(userId: string, days: number): Promise<NextResponse> {
+  const jiraCfg = await getJiraConfig(userId);
+  if (!jiraCfg) {
+    return NextResponse.json({ error: 'Jira не настроена (раздел "Подключения")' }, { status: 400 });
   }
-
-  const url = new URL(req.url);
-  const days = parseInt(url.searchParams.get('days') || '7', 10);
+  const projectLabel = jiraCfg.reportProjects.join(', ') || 'Jira';
 
   try {
-    const issues = await fetchWeeklyActivity(days);
+    const issues = await fetchWeeklyActivity(days, userId);
 
     if (issues.length === 0) {
-      return NextResponse.json({ sections: [], baseUrl: jiraBaseUrl(), total: 0 });
+      return NextResponse.json({ sections: [], baseUrl: await jiraBaseUrl(userId), total: 0, generatedAt: new Date().toISOString() });
     }
 
     // Prepare structured data for LLM — ALL comments per issue, not just the last
@@ -89,7 +87,7 @@ export async function GET(req: NextRequest) {
 - nextAction: конкретный план следующих шагов, вытекающий из комментариев
 
 Ответь строго в JSON:
-{"sections":[{"project":"PMD24HS","issues":[{"key":"","summary":"","status":"","statusChange":"","activity":"","nextAction":""}]}]}
+{"sections":[{"project":"","issues":[{"key":"","summary":"","status":"","statusChange":"","activity":"","nextAction":""}]}]}
 
 Данные:
 ${chunk.join('\n\n')}`;
@@ -99,12 +97,12 @@ ${chunk.join('\n\n')}`;
         temperature: 0.1,
         max_tokens: 12000,
         response_format: { type: 'json_object' },
-      });
+      }, userId);
 
       if (!llmRes.ok) {
         console.error('LLM error:', await llmRes.text().catch(() => ''));
         // Fallback: return raw data without LLM
-        return NextResponse.json(buildFallbackReport(issues, jiraBaseUrl()));
+        return NextResponse.json(buildFallbackReport(issues, await jiraBaseUrl(userId)));
       }
 
       const llmData = await llmRes.json();
@@ -119,12 +117,13 @@ ${chunk.join('\n\n')}`;
       }
     }
 
-    // Merge all issues into a single flat list (single project PMD24HS)
+    // Раскладываем задачи по проектам (название проекта берём из данных Jira, а не из ответа модели)
     const allIssues = allSections.flatMap(s => s.issues);
+    const projByKey = new Map<string, string>(issues.map((i: any) => [i.key, i.project || i.projectKey || projectLabel]));
 
     return NextResponse.json({
-      sections: allIssues.length > 0 ? [{ project: 'PMD24HS', issues: allIssues }] : [],
-      baseUrl: jiraBaseUrl(),
+      sections: groupByProject(allIssues, projByKey, projectLabel),
+      baseUrl: await jiraBaseUrl(userId),
       total: issues.length,
       generatedAt: new Date().toISOString(),
     });
@@ -134,8 +133,19 @@ ${chunk.join('\n\n')}`;
   }
 }
 
+function groupByProject(list: ReportIssue[], projByKey: Map<string, string>, fallbackLabel: string): ReportSection[] {
+  const map = new Map<string, ReportIssue[]>();
+  for (const it of list) {
+    const p = projByKey.get(it.key) || fallbackLabel;
+    if (!map.has(p)) map.set(p, []);
+    map.get(p)!.push(it);
+  }
+  return [...map].map(([project, issues]) => ({ project, issues }));
+}
+
 function buildFallbackReport(issues: any[], base: string) {
-  const fallbackIssues = issues.map((i: any) => {
+  const projByKey = new Map<string, string>(issues.map((i: any) => [i.key, i.project || i.projectKey || 'Jira']));
+  const fallbackIssues: ReportIssue[] = issues.map((i: any) => {
     const sc = (i.recentChanges ?? [])
       .flatMap((c: any) => (c.items ?? []).filter((it: any) => it.field === 'status'))
       .map((it: any) => `Переведена: ${it.from} → ${it.to}`)
@@ -151,10 +161,41 @@ function buildFallbackReport(issues: any[], base: string) {
     };
   });
   return {
-    sections: fallbackIssues.length > 0 ? [{ project: 'PMD24HS', issues: fallbackIssues }] : [],
+    sections: groupByProject(fallbackIssues, projByKey, 'Jira'),
     baseUrl: base,
     total: issues.length,
     generatedAt: new Date().toISOString(),
     fallback: true,
   };
+}
+
+// Последний сформированный отчёт из базы. В Jira и в модель не обращается.
+export async function GET() {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    const saved = await readCache<any>(session.user.id, 'report');
+    return NextResponse.json({ report: saved?.data ?? null });
+  } catch (e: any) {
+    console.error('Report cache read error:', e);
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
+// Формирование отчёта: только по кнопке "Сгенерировать отчёт".
+export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const body = await req.json().catch(() => ({}));
+  const days = Math.min(30, Math.max(1, parseInt(String(body?.days ?? 7), 10) || 7));
+  const res = await generate(session.user.id, days);
+  if (res.ok) {
+    try {
+      const data = await res.clone().json();
+      await writeCache(session.user.id, 'report', { ...data, days });
+    } catch (e: any) {
+      console.error('Report cache write error:', e?.message ?? e);
+    }
+  }
+  return res;
 }

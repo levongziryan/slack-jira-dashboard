@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get('q');
 
-  const where: any = {};
+  const where: any = { userId: session.user.id };
   // Обработанные отложенные переезжают в "Выполненные" и в этом списке не показываются.
   where.handled = false;
   if (q) where.text = { contains: q, mode: 'insensitive' };

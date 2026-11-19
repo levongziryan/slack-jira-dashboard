@@ -2,18 +2,19 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { getSlackChannels } from '@/lib/config';
 import { getOwnerConnectorToken } from '@/lib/owner-connector';
 import { matchesRules, type Rule } from '@/lib/priority';
 import { fetchReactionMaps, reconcileReactions, removeSavedReactions, resolveUserId, setSlackReaction, threadTsFromPermalink, tsKey } from '@/lib/slack-sync';
 import { loadAnalyzedSet, markAnalyzed } from '@/lib/analyzed';
 import { ensureCompletedPromise } from '@/lib/promote';
-import { backfillAuthorNames, backfillTextMentions } from '@/lib/slack-users';
+import { backfillChannelNames, backfillLoginNames, resolveSlackNames, SLACK_ID_RE, backfillAuthorNames, backfillTextMentions, normalizePeople } from '@/lib/slack-users';
 import { backfillPermalinks, buildPermalink, getWorkspaceUrl } from '@/lib/slack-links';
 import { llmChatCompletion, llmConfigured } from '@/lib/llm';
 
-async function slackSearch(token: string, query: string, count = 50) {
+async function slackSearch(token: string, query: string, count = 50, page = 1) {
   const res = await fetch(
-    `https://slack.com/api/search.messages?query=${encodeURIComponent(query)}&sort=timestamp&sort_dir=desc&count=${count}`,
+    `https://slack.com/api/search.messages?query=${encodeURIComponent(query)}&sort=timestamp&sort_dir=desc&count=${count}&page=${page}`,
     { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }
   );
   return res.json();
@@ -24,11 +25,12 @@ type LlmDiag = { configured: boolean; status?: number; error?: string; rawLength
 
 // Analyze Levon's own messages and extract commitments (explicit + implied).
 async function detectCommitments(
-  msgs: { i: number; channel: string; text: string }[]
+  msgs: { i: number; channel: string; text: string }[],
+  userId?: string,
 ): Promise<{ out: Record<number, Commitment>; diag: LlmDiag }> {
-  const diag: LlmDiag = { configured: llmConfigured() };
+  const diag: LlmDiag = { configured: await llmConfigured(userId) };
   if (!diag.configured) {
-    diag.error = 'ANTHROPIC_API_KEY не задан в .env';
+    diag.error = 'Ключ Anthropic не задан';
     return { out: {}, diag };
   }
   if (msgs.length === 0) return { out: {}, diag };
@@ -66,7 +68,7 @@ async function detectCommitments(
         ],
         max_tokens: maxTokens,
         response_format: { type: 'json_object' },
-      });
+      }, userId);
       diag.status = res.status;
       data = await res.json();
       if (!res.ok) {
@@ -107,31 +109,56 @@ async function detectCommitments(
   }
 }
 
+// Поиск с учётом выбранных каналов: если список задан, берём до трёх страниц результатов и оставляем только сообщения из него.
+async function slackSearchIn(token: string, query: string, allowed: Set<string>) {
+  const first = await slackSearch(token, query, 50, 1);
+  if (!first?.ok || allowed.size === 0) return first;
+  const all: any[] = [...(first?.messages?.matches ?? [])];
+  const pages = Math.min(3, first?.messages?.paging?.pages ?? 1);
+  for (let p = 2; p <= pages; p++) {
+    const next = await slackSearch(token, query, 50, p);
+    if (!next?.ok) break;
+    all.push(...(next?.messages?.matches ?? []));
+  }
+  first.messages = { ...(first.messages ?? {}), matches: all.filter((m) => allowed.has(String(m?.channel?.id ?? '').toUpperCase())) };
+  return first;
+}
+
 export async function POST() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let token: string;
   try {
-    token = await getOwnerConnectorToken({ service: 'SLACK' });
+    token = await getOwnerConnectorToken({ service: 'SLACK' }, session.user.id);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'Slack не подключён', available: false }, { status: 400 });
   }
 
+  const uid = session.user.id; // пользователь дашборда; userId ниже - ID пользователя в Slack
   const { userId, error: userIdError } = await resolveUserId(token);
   if (userIdError) console.error('[slack-refresh]', userIdError);
+  if (!userId) {
+    return NextResponse.json({ error: `Не удалось определить пользователя Slack (${userIdError ?? 'неизвестная ошибка'})` }, { status: 502 });
+  }
 
   try {
     // 1) Mentions of Levon
-    const searchData = await slackSearch(token, `<@${userId}>`, 50);
+    const allowed = new Set(await getSlackChannels(uid));
+    const searchData = await slackSearchIn(token, `<@${userId}>`, allowed);
     if (!searchData.ok) {
       return NextResponse.json({ error: `Slack API: ${searchData?.error ?? 'unknown'}` }, { status: 502 });
     }
-    const rules: Rule[] = await prisma.priorityRule.findMany({ select: { type: true, value: true } });
+    const rules: Rule[] = await prisma.priorityRule.findMany({ where: { userId: uid }, select: { type: true, value: true } });
 
     const matches = searchData?.messages?.matches ?? [];
+    // Автор: имя по Slack ID (username в поиске - это логин, а не имя человека)
+    const authorNames = await resolveSlackNames(
+      token,
+      [...new Set(matches.map((m: any) => m?.user).filter((x: any) => typeof x === 'string' && SLACK_ID_RE.test(x)))] as string[],
+    );
     const matchTsList = matches.map((m: any) => m?.ts).filter(Boolean) as string[];
-    const knownMentions = await prisma.mention.findMany({ where: { id: { in: matchTsList } }, select: { id: true } });
+    const knownMentions = await prisma.mention.findMany({ where: { userId: uid, id: { in: matchTsList } }, select: { id: true } });
     const knownMentionIds = new Set(knownMentions.map((k) => k.id));
     let newMentions = 0;
     let upserted = 0;
@@ -140,14 +167,15 @@ export async function POST() {
       if (!ts) continue;
       const channelId = msg?.channel?.id ?? '';
       const channel = msg?.channel?.name ?? channelId;
-      const author = msg?.username ?? msg?.user ?? '';
+      const author = (msg?.user && authorNames.get(msg.user)) || msg?.username || msg?.user || '';
       const permalink = msg?.permalink ?? '';
       const threadTs = msg?.thread_ts ?? threadTsFromPermalink(permalink);
       const isPriority = matchesRules({ channel, channelId, author, ts, permalink }, rules);
       await prisma.mention.upsert({
-        where: { id: ts },
+        where: { userId_id: { userId: uid, id: ts } },
         update: { priority: isPriority, threadTs },
         create: {
+          userId: uid,
           id: ts,
           ts,
           datetime: new Date(parseFloat(ts) * 1000),
@@ -165,20 +193,20 @@ export async function POST() {
     }
 
     // 2) Levon's own messages -> detect commitments (promises)
-    const ownData = await slackSearch(token, `from:<@${userId}>`, 50);
+    const ownData = await slackSearchIn(token, `from:<@${userId}>`, allowed);
     const ownMatches: any[] = ownData?.ok ? ownData?.messages?.matches ?? [] : [];
 
     // Skip messages already turned into a suggestion/promise (stable id S-<ts>)
     const candidateIds = ownMatches.map((m) => `S-${m?.ts}`).filter((x) => x !== 'S-undefined');
     const existing = await prisma.promise.findMany({
-      where: { id: { in: candidateIds } },
+      where: { userId: uid, id: { in: candidateIds } },
       select: { id: true },
     });
     const existingSet = new Set(existing.map((e) => e.id));
 
     const notSuggested = ownMatches.filter((m) => m?.ts && m?.text && !existingSet.has(`S-${m.ts}`));
     // Сообщения, уже отправленные на анализ (даже без найденных обязательств), повторно не анализируем.
-    const analyzedStore = await loadAnalyzedSet(notSuggested.map((m) => String(m.ts)));
+    const analyzedStore = await loadAnalyzedSet(uid, notSuggested.map((m) => String(m.ts)));
     const fresh = notSuggested.filter((m) => !analyzedStore.set.has(String(m.ts)));
     // cap LLM input
     const toAnalyze = fresh.slice(0, 40).map((m, idx) => ({
@@ -197,7 +225,8 @@ export async function POST() {
     let analyzedStoreError: string | null = analyzedStore.error ?? null;
     if (toAnalyze.length > 0) {
       const detected = await detectCommitments(
-        toAnalyze.map((m) => ({ i: m.idx, channel: m.channel, text: m.text }))
+        toAnalyze.map((m) => ({ i: m.idx, channel: m.channel, text: m.text })),
+        session.user.id,
       );
       llmDiag = detected.diag;
       const detections = detected.out;
@@ -206,9 +235,10 @@ export async function POST() {
         if (!m) continue;
         const id = `S-${m.ts}`;
         await prisma.promise.upsert({
-          where: { id },
+          where: { userId_id: { userId: uid, id } },
           update: {},
           create: {
+            userId: uid,
             id,
             ts: m.ts,
             datetime: new Date(parseFloat(m.ts) * 1000),
@@ -230,7 +260,7 @@ export async function POST() {
       }
       // Помечаем как проанализированные только после успешного ответа LLM, иначе при сбое повторим попытку.
       if (!detected.diag.error) {
-        const marked = await markAnalyzed(toAnalyze.map((m) => String(m.ts)));
+        const marked = await markAnalyzed(uid, toAnalyze.map((m) => String(m.ts)));
         analyzedMarked = marked.saved;
         if (marked.error) analyzedStoreError = marked.error;
       }
@@ -245,18 +275,19 @@ export async function POST() {
     let reactionsError: string | null = null;
     try {
       const maps = await fetchReactionMaps(token, userId);
+      if (allowed.size > 0) maps.savedItems = maps.savedItems.filter((s) => allowed.has(String(s.channelId).toUpperCase()));
 
       // Enrich bookmark-sourced saved items with channel names from existing mentions
       if (maps.savedItems.length > 0) {
         const cIds = [...new Set(maps.savedItems.map((s) => s.channelId))];
         const known = await prisma.mention.findMany({
-          where: { channelId: { in: cIds } },
+          where: { userId: uid, channelId: { in: cIds } },
           select: { channelId: true, channel: true },
           distinct: ['channelId'],
         });
         const cMap = new Map(known.map((c) => [c.channelId, c.channel]));
         const existingSaved = await prisma.savedItem.findMany({
-          where: { id: { in: maps.savedItems.map((s) => s.id) } },
+          where: { userId: uid, id: { in: maps.savedItems.map((s) => s.id) } },
           select: { id: true, handled: true },
         });
         const existingSavedMap = new Map(existingSaved.map((x) => [x.id, x.handled]));
@@ -266,7 +297,7 @@ export async function POST() {
         // Обработанная запись с пином при первом запуске этой логики считается старым состоянием:
         // пин с неё просто снимается (без возврата в активные).
         const MIGRATION_ID = '__saved_repin_v1__';
-        const migrationDone = (await loadAnalyzedSet([MIGRATION_ID])).set.has(MIGRATION_ID);
+        const migrationDone = (await loadAnalyzedSet(uid, [MIGRATION_ID])).set.has(MIGRATION_ID);
         let migrationOk = true;
         const closeAndUnpin: SavedLite[] = [];
 
@@ -296,23 +327,23 @@ export async function POST() {
           }
 
           await prisma.savedItem.upsert({
-            where: { id: s.id },
+            where: { userId_id: { userId: uid, id: s.id } },
             update: {
               text: s.text, channel: s.channel, author: s.author, threadTs: s.threadTs,
               ...(s.permalink ? { permalink: s.permalink } : {}),
               ...(reactivate && wasHandled === true ? { handled: false, handledAt: null } : {}),
             },
-            create: { ...s, kind: 'bookmark' },
+            create: { ...s, userId: uid, kind: 'bookmark' },
           });
           savedCount++;
           if (wasHandled === undefined || (reactivate && wasHandled === true)) newSaved++;
         }
-        if (!migrationDone && migrationOk) await markAnalyzed([MIGRATION_ID]);
+        if (!migrationDone && migrationOk) await markAnalyzed(uid, [MIGRATION_ID]);
 
         // Упоминания из корзины и из обработанных, на которых стоит пин, живут только в "Отложенных".
         const pinnedPairs = maps.savedItems.map((s) => ({ channelId: s.channelId, ts: s.ts }));
         const hideCandidates = await prisma.mention.findMany({
-          where: { OR: pinnedPairs, AND: [{ OR: [{ deleted: true }, { handled: true }] }] },
+          where: { userId: uid, OR: pinnedPairs, AND: [{ OR: [{ deleted: true }, { handled: true }] }] },
           select: { id: true, handledSource: true },
         });
         const hideIds = hideCandidates
@@ -320,19 +351,19 @@ export async function POST() {
           .map((m) => m.id);
         // Так же для обещаний: выполненные и удалённые с пином переезжают в "Отложенные".
         const hidePromiseCandidates = await prisma.promise.findMany({
-          where: { OR: pinnedPairs, AND: [{ OR: [{ deleted: true }, { status: 'completed' }] }] },
+          where: { userId: uid, OR: pinnedPairs, AND: [{ OR: [{ deleted: true }, { status: 'completed' }] }] },
           select: { id: true, completedSource: true },
         });
         const hidePromiseIds = hidePromiseCandidates.filter((x) => x.completedSource !== 'saved').map((x) => x.id);
         if (hidePromiseIds.length > 0) {
           await prisma.promise.updateMany({
-            where: { id: { in: hidePromiseIds } },
+            where: { userId: uid, id: { in: hidePromiseIds } },
             data: { deleted: false, deletedAt: null, status: 'completed', completedSource: 'saved' },
           });
         }
         if (hideIds.length > 0) {
           await prisma.mention.updateMany({
-            where: { id: { in: hideIds } },
+            where: { userId: uid, id: { in: hideIds } },
             data: { deleted: false, deletedAt: null, handled: true, handledAt: new Date(), handledSource: 'saved', queued: false },
           });
         }
@@ -342,17 +373,17 @@ export async function POST() {
       // Разовый перенос всех обработанных (зачёркнутых) отложенных в "Выполненные".
       try {
         const DONE_MIG = '__saved_done_to_completed_v1__';
-        if (!(await loadAnalyzedSet([DONE_MIG])).set.has(DONE_MIG)) {
-          const handledSaved = await prisma.savedItem.findMany({ where: { handled: true } });
-          for (const h of handledSaved) await ensureCompletedPromise(h);
-          await markAnalyzed([DONE_MIG]);
+        if (!(await loadAnalyzedSet(uid, [DONE_MIG])).set.has(DONE_MIG)) {
+          const handledSaved = await prisma.savedItem.findMany({ where: { userId: uid, handled: true } });
+          for (const h of handledSaved) await ensureCompletedPromise(uid, h);
+          await markAnalyzed(uid, [DONE_MIG]);
         }
       } catch (e: any) {
         console.error('[slack-refresh] saved->completed migration failed:', e?.message ?? e);
       }
 
       // 4) Apply emoji conventions (Done / hourglass) to auto open/close tasks
-      reconciled = await reconcileReactions(maps);
+      reconciled = await reconcileReactions(uid, maps);
       // Запись закрыта через ✅ в Slack: пин снимаем, чтобы следующий пин считался новым.
       for (const it of savedToUnpin) await removeSavedReactions(token, it.channelId, it.ts, userId);
     } catch (e: any) {
@@ -362,15 +393,18 @@ export async function POST() {
 
     // Автор в виде Slack ID (например U0B027DQKPY) заменяем на имя из Slack.
     try {
-      const names = await backfillAuthorNames(token);
-      await backfillTextMentions(token);
-      await backfillPermalinks(token);
+      const names = await backfillAuthorNames(uid, token);
+      await backfillChannelNames(uid, token);
+      await backfillLoginNames(uid, token);
+      await backfillTextMentions(uid, token);
+      await normalizePeople(uid, token);
+      await backfillPermalinks(uid, token);
       if (names.unresolved > 0) console.warn('[slack-refresh] не удалось получить имя для ID:', names.unresolved);
     } catch (e: any) {
       console.error('[slack-refresh] backfill names failed:', e?.message ?? e);
     }
 
-    const suggestedTotal = await prisma.promise.count({ where: { status: 'suggested' } });
+    const suggestedTotal = await prisma.promise.count({ where: { userId: uid, status: 'suggested' } });
 
     const ownOk = Boolean(ownData?.ok);
     const ownError: string | null = ownOk ? null : String(ownData?.error ?? 'no response');

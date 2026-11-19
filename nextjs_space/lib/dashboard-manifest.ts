@@ -2,7 +2,7 @@ export const manifest = {
   title: 'Slack трекер',
   eyebrow: 'Levon Gziryan · Slack трекер',
   subtitle: 'Метрики по упоминаниям и обещаниям.',
-  theme: 'journal' as const,
+  theme: 'auto' as const,
   sources: [{ id: 'slack', label: 'Slack · devteam-24h.slack.com' }],
   tiles: [
     {

@@ -1,5 +1,7 @@
 'use client';
 
+import { useModal } from '@/lib/use-escape';
+
 import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Hash, User, Link2, Loader2, Star } from 'lucide-react';
 import { toast } from 'sonner';
@@ -23,6 +25,7 @@ const TYPES = [
 ];
 
 export function PrioritySettingsModal({ onClose, onChanged }: Props) {
+  useModal(onClose);
   const [rules, setRules] = useState<RuleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [type, setType] = useState('channel');
@@ -89,11 +92,11 @@ export function PrioritySettingsModal({ onClose, onChanged }: Props) {
   const current = TYPES.find((t) => t.key === type)!;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-card rounded-xl shadow-xl border border-border w-full max-w-lg max-h-modal flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-panel sm:max-w-lg flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="font-display font-bold text-foreground flex items-center gap-2"><Star className="h-4 w-4 text-amber-500" />Настройка приоритетов</h2>
-          <button onClick={onClose} className="p-1 rounded hover:bg-muted text-muted-foreground"><X className="h-4 w-4" /></button>
+          <h2 className="font-display font-bold text-foreground flex items-center gap-2"><Star className="h-4 w-4 text-warning" />Настройка приоритетов</h2>
+          <button onClick={onClose} className="icon-btn"><X className="h-4 w-4" /></button>
         </div>
 
         <form onSubmit={add} className="p-4 border-b border-border space-y-3">
@@ -140,7 +143,7 @@ export function PrioritySettingsModal({ onClose, onChanged }: Props) {
                       <p className="text-sm text-foreground truncate">{r.label || r.value}</p>
                       {r.label && <p className="text-xs text-muted-foreground truncate">{r.value}</p>}
                     </div>
-                    <button onClick={() => remove(r.id)} className="p-1.5 rounded hover:bg-red-100 text-red-600 dark:hover:bg-red-900/30 transition shrink-0" title="Удалить">
+                    <button onClick={() => remove(r.id)} className="p-1.5 rounded-lg hover:bg-red-100 text-red-600 dark:hover:bg-red-900/30 transition shrink-0" title="Удалить">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>

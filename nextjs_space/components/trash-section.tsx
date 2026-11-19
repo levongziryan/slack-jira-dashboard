@@ -1,5 +1,7 @@
 'use client';
 
+import { Pagination, usePagination } from '@/components/pagination';
+
 import { useState, useEffect } from 'react';
 import { SlackMarkdown } from '@/components/slack-markdown';
 import { ExternalLink, Loader2, RotateCcw, Trash2, MessageSquare, ListChecks } from 'lucide-react';
@@ -88,6 +90,15 @@ export function TrashSection({ search, reloadToken, onChange }: Props) {
     ? promises.filter((p) => `${p.action} ${p.toWhom} ${p.channel}`.toLowerCase().includes(q))
     : promises;
 
+  // Постраничный вывод по объединённому списку: сначала обещания, затем упоминания
+  const combined = [
+    ...pFiltered.map((p) => ({ k: 'p' as const, p })),
+    ...mFiltered.map((m) => ({ k: 'm' as const, m })),
+  ];
+  const pg = usePagination(combined, q);
+  const pPage = pg.visible.flatMap((x) => (x.k === 'p' ? [x.p] : []));
+  const mPage = pg.visible.flatMap((x) => (x.k === 'm' ? [x.m] : []));
+
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
 
   const total = mFiltered.length + pFiltered.length;
@@ -101,7 +112,7 @@ export function TrashSection({ search, reloadToken, onChange }: Props) {
 
   return (
     <div className="space-y-2">
-      {pFiltered.map((p) => (
+      {pPage.map((p) => (
         <div key={`p-${p.id}`} className="p-3 rounded-lg border border-border bg-muted/30">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
             <div className="flex-1 min-w-0">
@@ -129,7 +140,7 @@ export function TrashSection({ search, reloadToken, onChange }: Props) {
                 href={p?.permalink || undefined}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-2.5 sm:p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition"
+                className="p-2.5 sm:p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition"
                 title="Открыть в Slack"
               >
                 <ExternalLink className="h-4 w-4" />
@@ -138,7 +149,7 @@ export function TrashSection({ search, reloadToken, onChange }: Props) {
           </div>
         </div>
       ))}
-      {mFiltered.map((m) => (
+      {mPage.map((m) => (
         <div key={`m-${m.id}`} className="p-3 rounded-lg border border-border bg-muted/30">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
             <div className="flex-1 min-w-0">
@@ -167,7 +178,7 @@ export function TrashSection({ search, reloadToken, onChange }: Props) {
                 href={m?.permalink || undefined}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-2.5 sm:p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition"
+                className="p-2.5 sm:p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition"
                 title="Открыть в Slack"
               >
                 <ExternalLink className="h-4 w-4" />
@@ -176,6 +187,7 @@ export function TrashSection({ search, reloadToken, onChange }: Props) {
           </div>
         </div>
       ))}
+      <Pagination {...pg.props} />
     </div>
   );
 }

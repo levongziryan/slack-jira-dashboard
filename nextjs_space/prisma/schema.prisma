@@ -17,6 +17,13 @@ model User {
   password      String?
   accounts      Account[]
   sessions      Session[]
+  settings      UserSetting[]
+  jiraCache JiraCache[]
+  mentions      Mention[]
+  savedItems    SavedItem[]
+  priorityRules PriorityRule[]
+  promises      Promise[]
+  analyzed      AnalyzedMessage[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -61,7 +68,8 @@ model VerificationToken {
 }
 
 model Mention {
-  id         String   @id
+  userId     String
+  id         String
   ts         String
   datetime   DateTime
   channel    String
@@ -78,7 +86,9 @@ model Mention {
   deleted    Boolean  @default(false)
   deletedAt  DateTime?
   createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@id([userId, id])
   @@index([priority])
   @@index([handled])
   @@index([deleted])
@@ -87,7 +97,8 @@ model Mention {
 }
 
 model SavedItem {
-  id         String   @id
+  userId     String
+  id         String
   ts         String
   channelId  String
   channel    String   @default("")
@@ -101,22 +112,28 @@ model SavedItem {
   handled    Boolean  @default(false)
   handledAt  DateTime?
   createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@id([userId, id])
   @@index([handled])
 }
 
 model PriorityRule {
   id        String   @id @default(cuid())
+  userId    String
   type      String   // "channel" | "author" | "thread"
   value     String
   label     String   @default("")
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([type])
+  @@index([userId])
 }
 
 model Promise {
-  id         String   @id
+  userId     String
+  id         String
   ts         String
   datetime   DateTime
   channel    String
@@ -136,7 +153,9 @@ model Promise {
   deletedAt  DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@id([userId, id])
   @@index([status])
   @@index([priority])
   @@index([deleted])
@@ -147,6 +166,33 @@ model Promise {
 // обновлении из Slack не гонять в LLM одни и те же сообщения. Таблица также создаётся
 // лениво (CREATE TABLE IF NOT EXISTS) в lib/analyzed.ts, поэтому db push не обязателен.
 model AnalyzedMessage {
-  id         String   @id
+  userId     String
+  id         String
   analyzedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, id])
+}
+
+// Токены и настройки интеграций пользователя (Slack, Anthropic, Jira). Значения хранятся
+// зашифрованными (AES-256-GCM, lib/crypto.ts). Таблица также создаётся лениво
+// (CREATE TABLE IF NOT EXISTS) в lib/settings.ts, поэтому db push не обязателен.
+model JiraCache {
+  userId    String
+  kind      String
+  payload   Json
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, kind])
+}
+
+model UserSetting {
+  userId    String
+  key       String
+  value     String
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, key])
 }

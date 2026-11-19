@@ -35,6 +35,9 @@ export function matchesRules(m: MentionLike, rules: Rule[]): boolean {
       const a = (m.author ?? '').toLowerCase().replace(/^@/, '');
       const target = v.replace(/^@/, '');
       if (a === target || a.includes(target)) return true;
+      // логин "ivan.petrov" и имя "Ivan Petrov" считаем одним человеком
+      const flat = (x: string) => x.replace(/[^\p{L}\p{N}]/gu, '');
+      if (flat(target) && flat(a).includes(flat(target))) return true;
     } else if (r.type === 'thread') {
       const ruleTs = extractThreadTs(r.value);
       if (!ruleTs) continue;
@@ -47,9 +50,10 @@ export function matchesRules(m: MentionLike, rules: Rule[]): boolean {
 }
 
 // Recompute Mention.priority for ALL stored mentions against the current rule set.
-export async function reconcileMentionPriority(): Promise<number> {
-  const rules = await prisma.priorityRule.findMany({ select: { type: true, value: true } });
+export async function reconcileMentionPriority(userId: string): Promise<number> {
+  const rules = await prisma.priorityRule.findMany({ where: { userId }, select: { type: true, value: true } });
   const mentions = await prisma.mention.findMany({
+    where: { userId },
     select: { id: true, channel: true, channelId: true, author: true, ts: true, permalink: true, priority: true },
     take: 1000,
   });
@@ -58,7 +62,7 @@ export async function reconcileMentionPriority(): Promise<number> {
   for (const m of mentions) {
     const should = matchesRules(m, rules);
     if (should !== m.priority) {
-      updates.push(prisma.mention.update({ where: { id: m.id }, data: { priority: should } }));
+      updates.push(prisma.mention.update({ where: { userId_id: { userId, id: m.id } }, data: { priority: should } }));
       changed++;
     }
   }

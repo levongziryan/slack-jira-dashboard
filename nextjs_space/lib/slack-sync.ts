@@ -1,6 +1,5 @@
 import { prisma } from '@/lib/prisma';
 
-export const LEVON_ID = 'U0AUT90510W';
 
 // --- Emoji classification -------------------------------------------------
 const DONE_EMOJI = new Set([
@@ -77,7 +76,7 @@ async function slackPost(token: string, method: string, body: any): Promise<any>
 export type ReactionMaps = { done: Set<string>; queue: Set<string>; savedItems: SavedReactionItem[] };
 
 // Fetch every message Levon reacted to and bucket by Done / Queue (digits-only ts keys).
-export async function fetchReactionMaps(token: string, userId: string = LEVON_ID): Promise<ReactionMaps> {
+export async function fetchReactionMaps(token: string, userId: string): Promise<ReactionMaps> {
   const done = new Set<string>();
   const queue = new Set<string>();
   const savedItems: SavedReactionItem[] = [];
@@ -153,7 +152,8 @@ export async function setSlackReaction(
   return false;
 }
 
-// ID владельца токена (auth.test). Если Slack не ответил, возвращаем запасной LEVON_ID и текст ошибки.
+// ID владельца токена (auth.test). Если Slack не ответил, userId пустой и есть текст ошибки.
+// Запасного ID нет: подставлять чужой ID значило бы читать чужие сообщения.
 export async function resolveUserId(token: string): Promise<{ userId: string; error?: string }> {
   try {
     const res = await fetch('https://slack.com/api/auth.test', {
@@ -163,9 +163,9 @@ export async function resolveUserId(token: string): Promise<{ userId: string; er
     });
     const d = await res.json();
     if (d?.ok && d?.user_id) return { userId: d.user_id };
-    return { userId: LEVON_ID, error: `auth.test: ${d?.error ?? 'unknown'}` };
+    return { userId: '', error: `auth.test: ${d?.error ?? 'unknown'}` };
   } catch (e: any) {
-    return { userId: LEVON_ID, error: `auth.test: ${e?.message ?? 'network'}` };
+    return { userId: '', error: `auth.test: ${e?.message ?? 'network'}` };
   }
 }
 
@@ -178,6 +178,7 @@ export async function removeSavedReactions(
   userId: string,
 ): Promise<{ ok: boolean; removed: string[]; error?: string }> {
   if (!channel || !ts) return { ok: false, removed: [], error: 'нет channel или ts' };
+  if (!userId) return { ok: false, removed: [], error: 'не определён пользователь Slack' };
   const names = new Set<string>();
   const got = await slackGet(
     token,
@@ -218,13 +219,14 @@ export async function removeSavedReactions(
 // --- Reconcile stored tasks against current reactions --------------------
 // Mentions: Done -> closed (auto); Queue -> open+queued; auto-closed items whose
 // Done reaction disappeared are reopened. Manual closes are preserved.
-export async function reconcileReactions(maps: ReactionMaps): Promise<{ mentions: number; promises: number; saved: number }> {
+export async function reconcileReactions(appUserId: string, maps: ReactionMaps): Promise<{ mentions: number; promises: number; saved: number }> {
   let mentionsChanged = 0;
   let promisesChanged = 0;
   let savedChanged = 0;
   const ops: Promise<any>[] = [];
 
   const mentions = await prisma.mention.findMany({
+    where: { userId: appUserId },
     select: { id: true, ts: true, threadTs: true, handled: true, handledSource: true, queued: true },
     take: 1000,
   });
@@ -244,14 +246,14 @@ export async function reconcileReactions(maps: ReactionMaps): Promise<{ mentions
       if (m.handled && m.handledSource === 'reaction') { data.handled = false; data.handledAt = null; data.handledSource = null; }
     }
     if (Object.keys(data).length > 0) {
-      ops.push(prisma.mention.update({ where: { id: m.id }, data }));
+      ops.push(prisma.mention.update({ where: { userId_id: { userId: appUserId, id: m.id } }, data }));
       mentionsChanged++;
     }
   }
 
   // Promises: only auto-manage active ones and those previously auto-completed.
   const promises = await prisma.promise.findMany({
-    where: { status: { in: ['active', 'completed'] } },
+    where: { userId: appUserId, status: { in: ['active', 'completed'] } },
     select: { id: true, ts: true, threadTs: true, status: true, completedSource: true },
     take: 1000,
   });
@@ -266,13 +268,14 @@ export async function reconcileReactions(maps: ReactionMaps): Promise<{ mentions
       if (p.status === 'completed' && p.completedSource === 'reaction') { data.status = 'active'; data.completedSource = null; }
     }
     if (Object.keys(data).length > 0) {
-      ops.push(prisma.promise.update({ where: { id: p.id }, data }));
+      ops.push(prisma.promise.update({ where: { userId_id: { userId: appUserId, id: p.id } }, data }));
       promisesChanged++;
     }
   }
 
   // Saved items: Done reaction closes them.
   const saved = await prisma.savedItem.findMany({
+    where: { userId: appUserId },
     select: { id: true, ts: true, threadTs: true, handled: true },
     take: 1000,
   });
@@ -281,7 +284,7 @@ export async function reconcileReactions(maps: ReactionMaps): Promise<{ mentions
     const data: any = {};
     if (state === 'done' && !s.handled) { data.handled = true; data.handledAt = new Date(); }
     if (Object.keys(data).length > 0) {
-      ops.push(prisma.savedItem.update({ where: { id: s.id }, data }));
+      ops.push(prisma.savedItem.update({ where: { userId_id: { userId: appUserId, id: s.id } }, data }));
       savedChanged++;
     }
   }

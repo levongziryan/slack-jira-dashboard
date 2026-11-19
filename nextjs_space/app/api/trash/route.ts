@@ -10,12 +10,12 @@ export async function GET() {
 
   const [mentions, promises] = await Promise.all([
     prisma.mention.findMany({
-      where: { deleted: true },
+      where: { userId: session.user.id, deleted: true },
       orderBy: [{ deletedAt: 'desc' }],
       take: 200,
     }),
     prisma.promise.findMany({
-      where: { deleted: true },
+      where: { userId: session.user.id, deleted: true },
       orderBy: [{ deletedAt: 'desc' }],
       take: 200,
     }),
