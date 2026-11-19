@@ -41,8 +41,6 @@ export function DashboardClient({ userName }: Props) {
   const [overdue, setOverdue] = useState(false);
   const [openOnly, setOpenOnly] = useState(false);
   const priorityAll = priorityOnly && days === 0 && ['mentions', 'active', 'suggested', 'completed'].includes(tab);
-  const prioKeys = openOnly ? ['m', 'a', 's'] : ['m', 'a', 's', 'c'];
-  const prioEmpty = prioKeys.every((k) => prioCounts[k] === 0);
   const kpiSelected: KpiKey | null =
     priorityOnly && openOnly ? 'priority'
     : tab === 'active' ? (overdue ? 'overdue' : 'active')
@@ -64,6 +62,8 @@ export function DashboardClient({ userName }: Props) {
   const { data, dataAsOf } = useDashboardData('/api/dashboard', 60_000, refreshKey);
   const [prioCounts, setPrioCounts] = useState<Record<string, number>>({});
   const setPrio = useCallback((k: string, n: number) => setPrioCounts((c) => (c[k] === n ? c : { ...c, [k]: n })), []);
+  const prioKeys = openOnly ? ['m', 'a', 's'] : ['m', 'a', 's', 'c'];
+  const prioEmpty = prioKeys.every((k) => prioCounts[k] === 0);
   const [filters, setFilters] = useState<{ channels: { value: string; label: string }[]; authors: string[]; recipients: string[] }>({ channels: [], authors: [], recipients: [] });
   const [suggestedCount, setSuggestedCount] = useState(0);
   const [savedCount, setSavedCount] = useState(0);
