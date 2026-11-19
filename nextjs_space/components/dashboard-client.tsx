@@ -260,13 +260,13 @@ export function DashboardClient({ userName }: Props) {
       <div className="max-w-7xl mx-auto px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           {/* Search */}
-          <div className="relative w-full sm:w-auto">
+          <div className="relative w-full sm:w-auto sm:flex-[1.3] sm:min-w-[12rem]">
             <Search className="absolute left-2.5 top-3 sm:top-2 h-3.5 w-3.5 text-muted-foreground" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Поиск..."
-              className="pl-8 pr-3 py-2.5 sm:py-1.5 w-full sm:w-48 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              className="pl-8 pr-3 py-2.5 sm:py-1.5 w-full text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
 
@@ -275,7 +275,7 @@ export function DashboardClient({ userName }: Props) {
           <select
             value={channel}
             onChange={(e) => setChannel(e.target.value)}
-            className="flex-1 min-w-0 sm:flex-none px-3 py-2.5 sm:py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            className="flex-1 min-w-0 sm:min-w-[10rem] px-3 py-2.5 sm:py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
           >
             <option value="">Все каналы</option>
             {(filters?.channels ?? []).map((c) => (
@@ -287,7 +287,7 @@ export function DashboardClient({ userName }: Props) {
           <select
             value={person}
             onChange={(e) => setPerson(e.target.value)}
-            className="flex-1 min-w-0 sm:flex-none px-3 py-2.5 sm:py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            className="flex-1 min-w-0 sm:min-w-[10rem] px-3 py-2.5 sm:py-1.5 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
           >
             <option value="">{tab === 'mentions' ? 'Все авторы' : 'Все адресаты'}</option>
             {(tab === 'mentions' ? filters?.authors ?? [] : filters?.recipients ?? []).map((p: string) => (
