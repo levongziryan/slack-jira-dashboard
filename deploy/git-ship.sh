@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 BRANCH="${1:?нужно имя ветки}"
 MSG="${2:?нужно сообщение коммита}"
 REPO="levongziryan/slack-jira-dashboard"
-URL="https://github.com/$REPO.git"
+URL="git@github.com:$REPO.git"
 
 if [ ! -d .git ]; then
   git init -q
@@ -15,7 +15,7 @@ if [ ! -d .git ]; then
   git symbolic-ref HEAD refs/heads/main
   git reset -q --mixed origin/main
 fi
-git remote get-url origin >/dev/null 2>&1 || git remote add origin "$URL"
+git remote get-url origin >/dev/null 2>&1 && git remote set-url origin "$URL" || git remote add origin "$URL"
 git fetch -q origin main
 
 git checkout -q -B "$BRANCH"
