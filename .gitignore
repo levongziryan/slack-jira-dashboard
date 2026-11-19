@@ -31,3 +31,4 @@ _backup_*
 _archive_*/
 *.tgz
 deploy/*.log
+_ship.patch
