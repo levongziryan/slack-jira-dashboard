@@ -1,6 +1,6 @@
 'use client';
 
-import { Pagination, usePagination } from '@/components/pagination';
+import { Pagination, useServerPagination } from '@/components/pagination';
 
 import { displayChannel } from '@/lib/channel-label';
 
@@ -32,22 +32,31 @@ interface Props {
 export function SavedSection({ search, hideHandled, reloadToken, onPromoted, onDeleted }: Props) {
   const [items, setItems] = useState<SavedRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const seq = useRef(0);
+  const pg = useServerPagination(`${search}|${hideHandled}`);
   // ID записей, по которым запрос в Slack ещё идёт: они скрыты сразу и не возвращаются при перезагрузке списка.
   const inflight = useRef<Set<string>>(new Set());
 
   const load = (showSpinner = false) => {
     if (showSpinner) setLoading(true);
+    const mySeq = ++seq.current;
     const params = new URLSearchParams();
     if (search) params.set('q', search);
     if (hideHandled) params.set('handled', 'false');
+    params.set('offset', String(pg.skip));
+    params.set('limit', String(pg.take));
     fetch(`/api/saved-items?${params.toString()}`)
       .then((r) => r.json())
-      .then((d: any) => setItems(Array.isArray(d) ? d.filter((x: any) => !inflight.current.has(x.id)) : []))
+      .then((d: any) => {
+        if (mySeq !== seq.current) return;
+        setItems(Array.isArray(d?.items) ? d.items.filter((x: any) => !inflight.current.has(x.id)) : []);
+        pg.setTotal(Number(d?.total) || 0);
+      })
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(items.length === 0); }, [search, hideHandled, reloadToken]);
+  useEffect(() => { load(items.length === 0); }, [search, hideHandled, reloadToken, pg.skip, pg.take]);
 
   const toggleHandled = async (id: string, handled: boolean) => {
     // Optimistic: remove/fade item immediately so there's no scroll jump
@@ -131,9 +140,8 @@ export function SavedSection({ search, hideHandled, reloadToken, onPromoted, onD
     }
   };
 
-  const pg = usePagination(items, search);
-
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  if ((items?.length ?? 0) === 0 && pg.total > 0) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   if ((items?.length ?? 0) === 0) return (
     <div className="text-center py-12 text-muted-foreground">
       <Bookmark className="h-8 w-8 mx-auto mb-2 opacity-40" />
@@ -144,7 +152,7 @@ export function SavedSection({ search, hideHandled, reloadToken, onPromoted, onD
 
   return (
     <div className="space-y-2">
-      {pg.visible.map((m) => {
+      {items.map((m) => {
         const overdue = m.reminderAt && new Date(m.reminderAt).getTime() < Date.now() && !m.handled;
         return (
         <div

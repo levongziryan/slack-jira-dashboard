@@ -1,6 +1,6 @@
 'use client';
 
-import { Pagination, usePagination } from '@/components/pagination';
+import { Pagination, useServerPagination } from '@/components/pagination';
 
 import { displayChannel } from '@/lib/channel-label';
 
@@ -41,9 +41,12 @@ export function MentionsSection({ search, channel, author, priorityOnly, hideHan
   const [mentions, setMentions] = useState<MentionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const inflight = useRef<Set<string>>(new Set());
+  const seq = useRef(0);
+  const pg = useServerPagination(`${search}|${channel}|${author}|${priorityOnly}|${days}|${hideHandled}`);
 
   const load = (showSpinner = false) => {
     if (showSpinner) setLoading(true);
+    const mySeq = ++seq.current;
     const params = new URLSearchParams();
     if (search) params.set('q', search);
     if (channel) params.set('channel', channel);
@@ -51,16 +54,22 @@ export function MentionsSection({ search, channel, author, priorityOnly, hideHan
     if (priorityOnly) params.set('priority', 'true');
     if (hideHandled) params.set('handled', 'false');
     if (days > 0) params.set('days', String(days));
+    params.set('offset', String(pg.skip));
+    params.set('limit', String(pg.take));
     fetch(`/api/mentions?${params.toString()}`)
       .then((r) => r.json())
-      .then((d: any) => setMentions(Array.isArray(d) ? d.filter((x: any) => !inflight.current.has(x.id)) : []))
+      .then((d: any) => {
+        if (mySeq !== seq.current) return;
+        setMentions(Array.isArray(d?.items) ? d.items.filter((x: any) => !inflight.current.has(x.id)) : []);
+        pg.setTotal(Number(d?.total) || 0);
+      })
       .catch(() => setMentions([]))
       .finally(() => setLoading(false));
   };
 
   // Show spinner only on first load; subsequent filter changes / background
   // refreshes (reloadToken) keep old content visible so scroll is preserved.
-  useEffect(() => { load(mentions.length === 0); }, [search, channel, author, priorityOnly, hideHandled, days, reloadToken]);
+  useEffect(() => { load(mentions.length === 0); }, [search, channel, author, priorityOnly, hideHandled, days, reloadToken, pg.skip, pg.take]);
 
   const toggleHandled = async (id: string, handled: boolean) => {
     // Optimistic: remove/fade item immediately so there's no scroll jump
@@ -131,18 +140,18 @@ export function MentionsSection({ search, channel, author, priorityOnly, hideHan
     }
   };
 
-  useEffect(() => { if (!loading) onCount?.(mentions.length); }, [loading, mentions.length]);
-  const pg = usePagination(mentions, `${search}|${channel}|${author}|${priorityOnly}`);
+  useEffect(() => { if (!loading) onCount?.(pg.total); }, [loading, pg.total]);
 
   if (loading && heading) return null;
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  if ((mentions?.length ?? 0) === 0 && pg.total > 0) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   if ((mentions?.length ?? 0) === 0 && heading) return null;
   if ((mentions?.length ?? 0) === 0) return <p className="text-center py-12 text-muted-foreground">Нет упоминаний</p>;
 
   return (
     <div className="space-y-2">
-      {heading && <h2 className="px-1 pt-2 text-sm font-semibold text-muted-foreground">{heading} · {mentions.length}</h2>}
-      {pg.visible.map((m) => (
+      {heading && <h2 className="px-1 pt-2 text-sm font-semibold text-muted-foreground">{heading} · {pg.total}</h2>}
+      {mentions.map((m) => (
         <div
           key={m.id}
           className={`p-3 rounded-lg border transition hover:shadow-sm ${
