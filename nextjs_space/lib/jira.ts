@@ -29,6 +29,22 @@ export async function jiraFetch(path: string, userId?: string) {
   return res.json();
 }
 
+// Запрос с произвольным методом и телом (комментарии и т.п.).
+export async function jiraRequest(method: 'POST' | 'PUT', path: string, body: unknown, userId?: string) {
+  const c = await cfg(userId);
+  const res = await fetch(path.startsWith('http') ? path : `${c.baseUrl}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${c.pat}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Jira ${res.status}: ${text.slice(0, 300)}`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 export async function searchIssues(
   jql: string,
   startAt = 0,
