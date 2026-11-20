@@ -43,8 +43,9 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, ove
   const [promises, setPromises] = useState<PromiseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<PromiseRow | null>(null);
+  const [source, setSource] = useState('');
   const seq = useRef(0);
-  const pg = useServerPagination(`${status}|${search}|${channel}|${to}|${priorityOnly}|${overdueOnly}`);
+  const pg = useServerPagination(`${status}|${search}|${channel}|${to}|${priorityOnly}|${overdueOnly}|${source}`);
 
   const load = (showSpinner = false) => {
     if (showSpinner) setLoading(true);
@@ -55,6 +56,7 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, ove
     if (to) params.set('to', to);
     if (priorityOnly) params.set('priority', 'true');
     if (overdueOnly) params.set('overdue', 'true');
+    if (source) params.set('source', source);
     params.set('offset', String(pg.skip));
     params.set('limit', String(pg.take));
     fetch(`/api/promises?${params.toString()}`)
@@ -70,7 +72,7 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, ove
 
   // Spinner only on the very first load; filter changes and background refreshes
   // (reloadToken) reload silently in-place so the scroll position is preserved.
-  useEffect(() => { load(promises.length === 0); }, [status, search, channel, to, priorityOnly, overdueOnly, reloadToken, pg.skip, pg.take]);
+  useEffect(() => { load(promises.length === 0); }, [status, search, channel, to, priorityOnly, overdueOnly, source, reloadToken, pg.skip, pg.take]);
 
   const toggleStatus = async (id: string, newStatus: string) => {
     // Optimistic: remove item immediately so there's no scroll jump
@@ -116,16 +118,28 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, ove
     return <span className="text-xs text-muted-foreground">до {deadline}</span>;
   };
 
+  const sourceChips = !heading && (
+    <div className="flex flex-wrap gap-1.5 pb-1">
+      {([['', 'Все'], ['slack', 'Slack'], ['jira', 'Jira'], ['incoming', 'Мне обещали']] as const).map(([k, label]) => (
+        <button key={k} onClick={() => setSource(k)}
+          className={`px-2.5 py-1 text-xs rounded-full border transition ${source === k ? 'bg-primary text-primary-foreground border-primary' : 'border-input bg-background hover:bg-muted'}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
   useEffect(() => { if (!loading) onCount?.(pg.total); }, [loading, pg.total]);
 
   if (loading && heading) return null;
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   if ((promises?.length ?? 0) === 0 && pg.total > 0) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   if ((promises?.length ?? 0) === 0 && heading) return null;
-  if ((promises?.length ?? 0) === 0) return <p className="text-center py-12 text-muted-foreground">{isSuggested ? 'Нет новых предложений. Нажмите «Обновить из Slack».' : 'Нет обещаний'}</p>;
+  if ((promises?.length ?? 0) === 0) return <div className="space-y-2">{sourceChips}<p className="text-center py-12 text-muted-foreground">{source ? 'Нет обещаний из выбранного источника' : isSuggested ? 'Нет новых предложений. Нажмите «Обновить» (Slack и Jira).' : 'Нет обещаний'}</p></div>;
 
   return (
     <div className="space-y-2">
+      {sourceChips}
       {heading && <h2 className="px-1 pt-2 text-sm font-semibold text-muted-foreground">{heading} · {pg.total}</h2>}
       {promises.map((p) => (
         <div
@@ -146,6 +160,8 @@ export function PromisesSection({ status, search, channel, to, priorityOnly, ove
                 ) : (
                   <span className="font-mono text-xs font-bold text-primary">{p?.id ?? ''}</span>
                 )}
+                <span className={`rounded px-1.5 text-[10px] font-semibold ${p.id.startsWith('J') ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400' : 'bg-muted text-muted-foreground'}`}>{p.id.startsWith('J') ? 'Jira' : 'Slack'}</span>
+                {(p.id.startsWith('JI-') || p.id.startsWith('SI-')) && <span className="rounded bg-emerald-500/15 px-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">мне обещали</span>}
                 <span className="text-xs text-muted-foreground">→ {p?.toWhom ?? ''}</span>
                 <span className="text-xs text-muted-foreground">{displayChannel(p?.channel)}</span>
                 {p.priority && (
