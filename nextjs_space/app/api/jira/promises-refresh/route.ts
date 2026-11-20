@@ -87,7 +87,7 @@ export async function POST() {
       });
       suggested++;
     }
-    await markAnalyzed(uid, fresh.map((u) => u.aid));
+    await markAnalyzed(uid, fresh.filter((_, i) => det.okIdx.has(i)).map((u) => u.aid));
     return NextResponse.json({ ok: true, available: true, suggested, analyzed: fresh.length });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message ?? e).slice(0, 300) }, { status: 500 });
