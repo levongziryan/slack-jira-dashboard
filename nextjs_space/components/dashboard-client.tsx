@@ -10,6 +10,7 @@ import { PromisesSection } from '@/components/promises-section';
 import { TrashSection } from '@/components/trash-section';
 import { JiraSection } from '@/components/jira-section';
 import { WeeklyReportSection } from '@/components/weekly-report-section';
+import { StatusesSection } from '@/components/statuses-section';
 import { toast } from 'sonner';
 import { RefreshButton } from '@/components/refresh-button';
 import { AddPromiseModal } from '@/components/add-promise-modal';
@@ -17,11 +18,11 @@ import { PrioritySettingsModal } from '@/components/priority-settings-modal';
 import { ConnectionsModal } from '@/components/connections-modal';
 import { AppearanceModal } from '@/components/appearance-modal';
 import { SafeDate } from '@/components/safe-format';
-import { LogOut, MessageSquare, ListChecks, Plus, Search, Filter, Sparkles, Settings, Bookmark, Trash2, Bug, FileText, KeyRound, MoreHorizontal, Palette } from 'lucide-react';
+import { LogOut, MessageSquare, ListChecks, Plus, Search, Filter, Sparkles, Settings, Bookmark, Trash2, Bug, FileText, KeyRound, MoreHorizontal, Palette, ClipboardCheck } from 'lucide-react';
 
 interface Props { userName: string }
 
-type Tab = 'mentions' | 'active' | 'suggested' | 'completed' | 'saved' | 'trash' | 'jira' | 'reports';
+type Tab = 'mentions' | 'active' | 'suggested' | 'completed' | 'saved' | 'trash' | 'jira' | 'reports' | 'statuses';
 
 export function DashboardClient({ userName }: Props) {
   const [ws, setWs] = useState<{ name: string; icon: string | null }>({ name: '', icon: null });
@@ -146,6 +147,7 @@ export function DashboardClient({ userName }: Props) {
     { key: 'completed', label: 'Выполненные', icon: <ListChecks className="h-4 w-4 opacity-50" /> },
     { key: 'jira', label: 'Задачи Jira', icon: <Bug className="h-4 w-4" /> },
     { key: 'reports', label: 'Отчет Jira', icon: <FileText className="h-4 w-4" /> },
+    { key: 'statuses', label: 'Статусы Jira', icon: <ClipboardCheck className="h-4 w-4" /> },
     { key: 'trash', label: 'Корзина', icon: <Trash2 className="h-4 w-4" />, badge: trashCount },
   ];
 
@@ -381,6 +383,9 @@ export function DashboardClient({ userName }: Props) {
         )}
         {tab === 'reports' && (
           <WeeklyReportSection key="rp" search={search} />
+        )}
+        {tab === 'statuses' && (
+          <StatusesSection key="st" search={search} />
         )}
         {tab === 'trash' && (
           <TrashSection key="tr" reloadToken={refreshKey} search={search} onChange={refresh} />
