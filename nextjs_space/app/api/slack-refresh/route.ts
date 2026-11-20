@@ -11,6 +11,8 @@ import { ensureCompletedPromise } from '@/lib/promote';
 import { backfillChannelNames, backfillLoginNames, resolveSlackNames, SLACK_ID_RE, backfillAuthorNames, backfillTextMentions, normalizePeople } from '@/lib/slack-users';
 import { backfillPermalinks, buildPermalink, getWorkspaceUrl } from '@/lib/slack-links';
 import { llmChatCompletion, llmConfigured } from '@/lib/llm';
+import { detectPromises } from '@/lib/promise-detect';
+import { slackToPlain } from '@/lib/promote';
 
 async function slackSearch(token: string, query: string, count = 50, page = 1) {
   const res = await fetch(
@@ -404,6 +406,62 @@ export async function POST() {
       console.error('[slack-refresh] backfill names failed:', e?.message ?? e);
     }
 
+    // 4) Входящие обещания: сообщения других людей, где меня тегнули (последние 14 дней, только новые).
+    let incomingSuggested = 0;
+    let incomingError: string | null = null;
+    try {
+      const since = new Date(Date.now() - 14 * 86400000);
+      const ms = await prisma.mention.findMany({
+        where: { userId: uid, deleted: false, datetime: { gte: since } },
+        orderBy: { datetime: 'desc' },
+        take: 150,
+      });
+      const incAids = ms.map((m) => `SI-${m.ts}`);
+      const seen = await loadAnalyzedSet(uid, incAids);
+      const freshIn = ms.filter((m) => !seen.set.has(`SI-${m.ts}`) && m.text.trim().length >= 15).slice(0, 40);
+      if (freshIn.length > 0) {
+        const det = await detectPromises(
+          freshIn.map((m, i) => ({ i, where: `#${m.channel}`, author: m.author, date: m.datetime.toISOString(), text: slackToPlain(m.text).slice(0, 700) })),
+          'slack-incoming',
+          uid,
+        );
+        if (det.error) incomingError = det.error;
+        else {
+          for (const [iStr, d] of Object.entries(det.out)) {
+            const m = freshIn[Number(iStr)];
+            if (!m) continue;
+            await prisma.promise.upsert({
+              where: { userId_id: { userId: uid, id: `SI-${m.ts}` } },
+              update: {},
+              create: {
+                userId: uid,
+                id: `SI-${m.ts}`,
+                ts: m.ts,
+                datetime: m.datetime,
+                channel: m.channel,
+                channelId: m.channelId,
+                toWhom: 'мне',
+                action: d.action,
+                condition: d.condition,
+                deadline: d.deadline,
+                status: 'suggested',
+                sourceText: slackToPlain(m.text).slice(0, 600),
+                permalink: m.permalink,
+                threadTs: m.threadTs,
+                priority: m.priority,
+                note: `Авто-определение (Slack, входящее), уверенность ${(d.confidence * 100).toFixed(0)}%`,
+              },
+            });
+            incomingSuggested++;
+          }
+          await markAnalyzed(uid, freshIn.map((m) => `SI-${m.ts}`));
+        }
+      }
+    } catch (e: any) {
+      incomingError = String(e?.message ?? e).slice(0, 200);
+      console.error('[slack-refresh] incoming promises failed:', incomingError);
+    }
+
     const suggestedTotal = await prisma.promise.count({ where: { userId: uid, status: 'suggested' } });
 
     const ownOk = Boolean(ownData?.ok);
@@ -426,7 +484,7 @@ export async function POST() {
     };
     console.log('[slack-refresh]', JSON.stringify({ upserted, newMentions, suggested, suggestedTotal, savedCount, newSaved, ...diag, warning }));
 
-    return NextResponse.json({ ok: true, upserted, newMentions, suggested, suggestedTotal, savedCount, newSaved, reconciled, available: true, warning, diag });
+    return NextResponse.json({ ok: true, upserted, newMentions, suggested, incomingSuggested, incomingError, suggestedTotal, savedCount, newSaved, reconciled, available: true, warning, diag });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'Ошибка обновления' }, { status: 500 });
   }

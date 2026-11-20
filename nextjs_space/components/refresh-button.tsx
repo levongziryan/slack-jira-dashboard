@@ -11,8 +11,10 @@ export function RefreshButton({ onDone }: { onDone: () => void }) {
   const handleRefresh = async () => {
     setLoading(true);
     try {
+      const jiraP = fetch('/api/jira/promises-refresh', { method: 'POST' }).then((r) => r.json()).catch(() => null);
       const res = await fetch('/api/slack-refresh', { method: 'POST' });
       const data = await res.json();
+      const jira = await jiraP;
       if (data?.available === false) {
         setAvailable(false);
         toast.error('Slack не подключён. Подключите Slack в настройках платформы.');
@@ -29,10 +31,15 @@ export function RefreshButton({ onDone }: { onDone: () => void }) {
           const parts: string[] = [];
           if (newM > 0) parts.push(`новых упоминаний: ${newM}`);
           if (newS > 0) parts.push(`новых отложенных: ${newS}`);
+          const inc = data?.incomingSuggested ?? 0;
+          const jr = jira?.suggested ?? 0;
+          if (inc > 0) parts.push(`входящих обещаний из Slack: ${inc}`);
+          if (jr > 0) parts.push(`предложений из Jira: ${jr}`);
           if (sg > 0) parts.push(`новых предложений: ${sg} (вкладка «Предложения»)`);
           else if (analyzed > 0) parts.push(`проверено новых своих сообщений: ${analyzed}, обязательств нет`);
           toast.success(parts.length > 0 ? `Обновлено: ${parts.join(', ')}` : 'Обновлено, новых данных нет');
         }
+        if (jira && jira.ok === false) toast.warning(`Jira: ${jira.error ?? 'не удалось проверить обещания'}`, { duration: 15000 });
         onDone?.();
       } else {
         toast.error(data?.error ?? 'Ошибка обновления');

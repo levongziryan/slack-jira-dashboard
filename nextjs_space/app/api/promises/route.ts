@@ -16,9 +16,14 @@ export async function GET(request: Request) {
   const search = searchParams.get('q');
   const priorityOnly = searchParams.get('priority') === 'true';
   const overdueOnly = searchParams.get('overdue') === 'true';
+  const source = searchParams.get('source') ?? '';
 
   // completedSource 'saved' = сообщение перенесено в "Отложенные" (пин), в обещаниях не показываем
   const where: any = { userId: session.user.id, status, deleted: false, AND: [{ OR: [{ completedSource: null }, { completedSource: { not: 'saved' } }] }] };
+  // Источник кодируется префиксом id: J-/JI- Jira, S-/SI-/P-/PB- Slack; входящие: JI-, SI-.
+  if (source === 'jira') where.AND.push({ id: { startsWith: 'J' } });
+  else if (source === 'slack') where.AND.push({ NOT: { id: { startsWith: 'J' } } });
+  else if (source === 'incoming') where.AND.push({ OR: [{ id: { startsWith: 'JI-' } }, { id: { startsWith: 'SI-' } }] });
   if (channel) where.channel = channel;
   if (to) where.toWhom = { contains: to, mode: 'insensitive' };
   if (priorityOnly) where.priority = true;
