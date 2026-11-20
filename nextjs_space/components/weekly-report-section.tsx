@@ -1,8 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FileText, RefreshCw, ExternalLink, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { FileText, RefreshCw, ExternalLink, AlertCircle, ChevronDown, ChevronRight, Copy } from 'lucide-react';
+import { toast } from 'sonner';
+import { copyText } from '@/lib/clipboard';
+import { selfToI } from '@/lib/names';
 import { SafeDate } from '@/components/safe-format';
+
+async function copyStatus(text: string) {
+  const ok = await copyText(selfToI(text));
+  if (ok) toast.success('Статус скопирован');
+  else toast.error('Не удалось скопировать');
+}
 
 interface ReportIssue {
   key: string;
@@ -208,7 +217,18 @@ export function WeeklyReportSection({ search }: { search: string }) {
                                 )}
                               </div>
                               {issue.activity && issue.activity !== 'Нет активности' && (
-                                <p className="text-xs text-muted-foreground">📋 {issue.activity}</p>
+                                <div className="flex items-start gap-1.5">
+                                  <p className="flex-1 text-xs text-muted-foreground">📋 {issue.activity}</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyStatus(issue.activity)}
+                                    title="Копировать статус"
+                                    aria-label="Копировать статус"
+                                    className="shrink-0 rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               )}
                               {issue.nextAction && issue.nextAction !== 'Не указано' && (
                                 <p className="text-xs text-blue-600 dark:text-blue-400">▶ {issue.nextAction}</p>

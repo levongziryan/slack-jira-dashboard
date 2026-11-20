@@ -1,6 +1,7 @@
 'use client';
 
 import { Pagination, usePagination } from '@/components/pagination';
+import { shortName } from '@/lib/names';
 
 import { useState, useEffect } from 'react';
 import { ExternalLink, User, Eye, PenTool, ChevronDown, AlertCircle, RefreshCw } from 'lucide-react';
@@ -229,10 +230,10 @@ export function JiraSection({ search }: Props) {
                   <div className="flex flex-wrap items-center gap-2 mt-1">
                     <span className="text-xs text-muted-foreground">{f.project?.name}</span>
                     {role !== 'assignee' && f.assignee && (
-                      <span className="text-xs text-muted-foreground">→ {f.assignee.displayName}</span>
+                      <span className="text-xs text-muted-foreground">→ {shortName(f.assignee.displayName)}</span>
                     )}
                     {role !== 'reporter' && f.reporter && (
-                      <span className="text-xs text-muted-foreground">от {f.reporter.displayName}</span>
+                      <span className="text-xs text-muted-foreground">от {shortName(f.reporter.displayName)}</span>
                     )}
                     {isOverdue && (
                       <span className="text-xs text-red-600 dark:text-red-400 font-medium">⚠ Просрочено ({f.duedate})</span>
