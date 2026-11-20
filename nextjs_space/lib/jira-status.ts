@@ -45,6 +45,11 @@ export interface StatusItem {
 const SLACK_LINK_RE = /https?:\/\/[\w.-]+\.slack\.com\/archives\/([A-Z0-9]+)\/p(\d{10})(\d{6})(\?[^\s)\]|>"'<]*)?/g;
 const URL_RE = /https?:\/\/[^\s)\]|>"'<]+/g;
 
+// Длинный текст режем с середины: начало и конец (в конце комментария обычно итог).
+const headTail = (s: string, n: number) => {
+  const t = s ?? '';
+  return t.length > n ? `${t.slice(0, Math.floor(n / 2))} [...] ${t.slice(-Math.floor(n / 2))}` : t;
+};
 const trunc = (s: string, n: number) => ((s ?? '').length > n ? (s ?? '').slice(0, n) + '…' : (s ?? ''));
 
 export async function listOpenIssues(userId: string): Promise<{ key: string; summary: string; status: string }[]> {
@@ -86,10 +91,29 @@ async function readSlackThread(token: string, channel: string, ts: string, threa
   return d as any;
 }
 
+// Разбор ответа модели; при битом JSON достаём поля регулярками.
+function parseStatusJson(raw: string): { status: string; ids: string[] } | null {
+  let t = raw.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '').trim();
+  const a = t.indexOf('{');
+  const b = t.lastIndexOf('}');
+  if (a >= 0 && b > a) t = t.slice(a, b + 1);
+  try {
+    const p = JSON.parse(t.replace(/,(\s*[}\]])/g, '$1'));
+    const status = String(p?.status ?? '').trim();
+    if (!status) return null;
+    return { status, ids: Array.isArray(p?.artifactIds) ? p.artifactIds.map(String) : [] };
+  } catch {
+    const m = t.match(/"status"\s*:\s*"([\s\S]*?)"\s*,\s*"artifactIds"/) ?? t.match(/"status"\s*:\s*"([\s\S]*?)"\s*\}/);
+    if (!m) return null;
+    const ids = [...(t.match(/"artifactIds"\s*:\s*\[([^\]]*)\]/)?.[1] ?? '').matchAll(/"(A\d+)"/g)].map((x) => x[1]);
+    return { status: m[1].replace(/\\n/g, ' ').trim(), ids };
+  }
+}
+
 export async function buildStatus(userId: string, key: string, opts: { sinceIso?: string } = {}): Promise<StatusItem> {
   const base = await jiraBaseUrl(userId);
   const issue = await jiraFetch(
-    `/rest/api/2/issue/${encodeURIComponent(key)}?fields=summary,status,description,comment,attachment,duedate,created,updated,assignee,reporter`,
+    `/rest/api/2/issue/${encodeURIComponent(key)}?expand=changelog&fields=summary,status,description,comment,attachment,duedate,created,updated,assignee,reporter`,
     userId,
   );
   const f = issue.fields ?? {};
@@ -178,6 +202,10 @@ export async function buildStatus(userId: string, key: string, opts: { sinceIso?
     }
   }
 
+  const changes = (issue.changelog?.histories ?? []).slice(-10)
+    .map((h: any) => `[${String(h.created).slice(0, 10)} ${h.author?.displayName ?? ''}] ${(h.items ?? []).map((i: any) => `${i.field}: ${i.fromString ?? 'нет'} -> ${i.toString ?? 'нет'}`).join(', ')}`)
+    .join('\n');
+
   const people = [...new Set<string>([f.assignee?.displayName, f.reporter?.displayName, ...comments.map((c) => c.author)].filter(Boolean))];
   const today = minskPeriod().todayRu;
 
@@ -189,7 +217,7 @@ export async function buildStatus(userId: string, key: string, opts: { sinceIso?
 
 ПРАВИЛА:
 1. 2-4 предложения утвердительным языком от первого лица множественного числа: "Запросили...", "Получили...", "Согласовали...", "Подготовили...". Если действие совершил сам автор (Левон Гзирян), пиши от первого лица единственного числа ("я").
-2. Только факты из данных ниже: без догадок, без причин и мотивов, которых там нет. Если данных о движении нет, напиши "Без изменений, ожидаем ..." только если ожидание следует из текста; иначе "Новых данных нет".
+2. Только факты из данных ниже: без догадок, без причин и мотивов, которых там нет. Опирайся на самые свежие комментарии и изменения по датам: опиши последнее, что произошло и чего ждём. Если в комментариях за последние дни есть ответ или решение, обязательно отрази его. "Новых данных нет" пиши только если в описании, комментариях, изменениях и тредах вообще нет ничего по существу.
 3. Отрази появившиеся артефакты (документы, файлы, ссылки на документацию, решения) и тред(ы) Slack: что обсудили и к чему пришли.
 4. Остальных людей пиши как "И.Фамилия" (например, "Т.Тажетдинов"), без полного имени. Без канцелярита, без слов "указано", "отмечено", "зафиксировано".
 5. В artifactIds перечисли id артефактов из списка, которые реально относятся к статусу (появились недавно или важны для него). Новые id не выдумывай.
@@ -201,35 +229,38 @@ export async function buildStatus(userId: string, key: string, opts: { sinceIso?
 Артефакты считаются новыми с ${sinceIso.slice(0, 10)}.
 
 Описание:
-${trunc(f.description ?? '', 2500) || 'нет'}
+${headTail(f.description ?? '', 2500) || 'нет'}
 
-Комментарии Jira (последние):
-${comments.slice(-12).map((c) => `[${c.date?.slice(0, 10)} ${c.author}] ${trunc(c.body, 900)}`).join('\n') || 'нет'}
+Комментарии Jira (последние, от старых к новым):
+${comments.slice(-12).map((c) => `[${c.date?.slice(0, 10)} ${c.author}] ${headTail(c.body, 2400)}`).join('\n') || 'нет'}
+
+Изменения в задаче (последние):
+${changes || 'нет'}
 
 ${slackBlocks.length ? slackBlocks.join('\n\n') : 'Треды Slack: нет доступных'}
 
 Артефакты-кандидаты (id | вид | название | источник | дата | автор | новизна):
 ${artifactText}`;
 
-  const llmRes = await llmChatCompletion({
-    messages: [{ role: 'user', content: prompt }],
-    max_tokens: 1500,
-    response_format: { type: 'json_object' },
-  }, userId);
-
   let status = '';
   let ids: string[] = [];
-  if (llmRes.ok) {
-    try {
-      const d = await llmRes.json();
-      const parsed = JSON.parse(d.choices?.[0]?.message?.content ?? '{}');
-      status = String(parsed.status ?? '').trim();
-      ids = Array.isArray(parsed.artifactIds) ? parsed.artifactIds.map(String) : [];
-    } catch {}
-  } else {
-    throw new Error(`Модель не ответила (HTTP ${llmRes.status})`);
+  let lastErr = '';
+  for (const maxTokens of [1500, 3000]) {
+    const llmRes = await llmChatCompletion({
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: maxTokens,
+      response_format: { type: 'json_object' },
+    }, userId);
+    if (!llmRes.ok) throw new Error(`Модель не ответила (HTTP ${llmRes.status})`);
+    const d: any = await llmRes.json().catch(() => null);
+    const raw = String(d?.choices?.[0]?.message?.content ?? '');
+    if (!raw.trim()) { lastErr = 'пустой ответ модели'; continue; }
+    const parsed = parseStatusJson(raw);
+    if (parsed) { status = parsed.status; ids = parsed.ids; break; }
+    lastErr = 'ответ модели не разобран';
   }
-  if (!status) status = 'Новых данных нет.';
+  // Ошибку не подменяем текстом "Новых данных нет": пользователь должен видеть сбой.
+  if (!status) throw new Error(lastErr || 'модель не вернула статус');
 
   const chosen = ids.length ? artifacts.filter((a) => ids.includes(a.id)) : artifacts.filter((a) => a.isNew);
   return {

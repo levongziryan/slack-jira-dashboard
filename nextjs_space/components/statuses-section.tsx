@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw, Copy, ExternalLink, MessageSquarePlus, AlertCircle, Check, Paperclip, Loader2, FileSpreadsheet } from 'lucide-react';
+import { RefreshCw, Copy, ExternalLink, AlertCircle, Check, Paperclip, Loader2, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { copyText } from '@/lib/clipboard';
 import { selfToI } from '@/lib/names';
@@ -30,7 +30,6 @@ export function StatusesSection({ search }: { search: string }) {
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const [confirm, setConfirm] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [reporting, setReporting] = useState(false);
   const [confirmReport, setConfirmReport] = useState(false);
@@ -84,19 +83,6 @@ export function StatusesSection({ search }: { search: string }) {
   const copy = async (it: Item) => {
     const text = edits[it.key] !== undefined ? `${it.date}: ${edits[it.key]}` : full(it);
     (await copyText(text)) ? toast.success('Статус скопирован') : toast.error('Не удалось скопировать');
-  };
-
-  const sendComment = async (it: Item) => {
-    const text = (edits[it.key] ?? selfToI(it.text)).trim();
-    setBusyKey(it.key, true);
-    try {
-      const r = await fetch('/api/jira/statuses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'comment', key: it.key, text, date: it.date }) });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Ошибка');
-      setItems((m) => ({ ...m, [it.key]: { ...m[it.key], commentedAt: new Date().toISOString() } }));
-      toast.success(`Комментарий добавлен в ${it.key}`);
-    } catch (e: any) { toast.error(e.message); }
-    setBusyKey(it.key, false); setConfirm(null);
   };
 
   const fillReport = async () => {
@@ -213,18 +199,6 @@ export function StatusesSection({ search }: { search: string }) {
                   <button onClick={() => copy(it)} className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs">
                     <Copy className="h-3.5 w-3.5" />Копировать
                   </button>
-                  {confirm === iss.key ? (
-                    <>
-                      <button onClick={() => sendComment(it)} disabled={isBusy} className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-xs text-primary-foreground disabled:opacity-50">
-                        <Check className="h-3.5 w-3.5" />Добавить в {iss.key}
-                      </button>
-                      <button onClick={() => setConfirm(null)} className="text-xs text-muted-foreground underline">Отмена</button>
-                    </>
-                  ) : (
-                    <button onClick={() => setConfirm(iss.key)} className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs">
-                      <MessageSquarePlus className="h-3.5 w-3.5" />В комментарий Jira
-                    </button>
-                  )}
                   {it.commentedAt && <span className="text-xs text-muted-foreground">добавлен в Jira {fmt(it.commentedAt)}</span>}
                 </div>
               </>

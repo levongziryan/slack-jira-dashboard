@@ -4,7 +4,7 @@ export const maxDuration = 300;
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { getJiraConfig, getSheetsConfig } from '@/lib/config';
-import { jiraBaseUrl, jiraRequest, searchIssues } from '@/lib/jira';
+import { jiraBaseUrl, searchIssues } from '@/lib/jira';
 import { minskPeriod } from '@/lib/dashboard-title';
 import { readCache, writeCache } from '@/lib/jira-cache';
 import { buildStatus, listOpenIssues, STATUS_PROJECT, type StatusItem } from '@/lib/jira-status';
@@ -48,19 +48,6 @@ export async function POST(req: NextRequest) {
   if (!/^[A-Z][A-Z0-9_]+-\d+$/.test(key)) return NextResponse.json({ error: 'Некорректный ключ задачи' }, { status: 400 });
 
   try {
-    if (body.action === 'comment') {
-      const text = String(body.text ?? '').trim();
-      const date = String(body.date ?? '').trim();
-      if (!text || !/^\d{2}\.\d{2}\.\d{4}$/.test(date)) return NextResponse.json({ error: 'Нужны текст и дата дд.мм.гггг' }, { status: 400 });
-      await jiraRequest('POST', `/rest/api/2/issue/${encodeURIComponent(key)}/comment`, { body: `${date}: ${text}` }, userId);
-      const cur = await load(userId);
-      if (cur.items[key]) {
-        cur.items[key].commentedAt = new Date().toISOString();
-        await writeCache(userId, KIND, cur);
-      }
-      return NextResponse.json({ ok: true });
-    }
-
     // generate: нижняя граница "новых" артефактов - дата прошлого статуса, иначе 14 дней
     const prev = (await load(userId)).items[key];
     const item = await buildStatus(userId, key, { sinceIso: prev?.generatedAt });
