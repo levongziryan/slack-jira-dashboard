@@ -6,6 +6,7 @@
 // самый ранний пользователь. После появления userId в данных (мультитенантность) это уберём.
 import { prisma } from '@/lib/prisma';
 import { getUserSettings, type SettingKey } from '@/lib/settings';
+import { parseStopWords } from '@/lib/stopwords';
 
 export type JiraConfig = { baseUrl: string; pat: string; tasksProjects: string[]; reportProjects: string[] };
 
@@ -84,4 +85,9 @@ export async function getSheetsConfig(userId?: string): Promise<{ url: string; t
   const url = await value(userId, 'SHEETS_WEBHOOK_URL');
   const token = await value(userId, 'SHEETS_WEBHOOK_TOKEN');
   return url && token ? { url, token } : null;
+}
+
+// Стоп-слова для мониторинга ожиданий в Slack (нижний регистр).
+export async function getStopWords(userId?: string): Promise<string[]> {
+  return parseStopWords(await value(userId, 'SLACK_STOP_WORDS'));
 }
