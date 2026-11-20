@@ -60,6 +60,7 @@ export function DashboardClient({ userName }: Props) {
   const [showSettings, setShowSettings] = useState(false);
   const [showConnections, setShowConnections] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [settingsVersion, setSettingsVersion] = useState(0);
   const { data, dataAsOf } = useDashboardData('/api/dashboard', 60_000, refreshKey);
   const [prioCounts, setPrioCounts] = useState<Record<string, number>>({});
   const setPrio = useCallback((k: string, n: number) => setPrioCounts((c) => (c[k] === n ? c : { ...c, [k]: n })), []);
@@ -178,7 +179,7 @@ export function DashboardClient({ userName }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            <RefreshButton onDone={refresh} />
+            <RefreshButton onDone={refresh} settingsVersion={settingsVersion} />
             <button
               onClick={() => setShowAppearance(true)}
               className="icon-btn"
@@ -435,7 +436,7 @@ export function DashboardClient({ userName }: Props) {
 
       {showAdd && <AddPromiseModal onClose={() => setShowAdd(false)} onCreated={refresh} />}
       {showAppearance && <AppearanceModal onClose={() => setShowAppearance(false)} />}
-      {showConnections && <ConnectionsModal onClose={() => setShowConnections(false)} onSaved={refresh} />}
+      {showConnections && <ConnectionsModal onClose={() => setShowConnections(false)} onSaved={() => { refresh(); setSettingsVersion((v) => v + 1); }} />}
       {showSettings && <PrioritySettingsModal onClose={() => setShowSettings(false)} onChanged={() => { refresh(); loadRules(); }} />}
     </div>
   );
