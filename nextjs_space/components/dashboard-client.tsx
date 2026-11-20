@@ -65,6 +65,11 @@ export function DashboardClient({ userName }: Props) {
   const prioKeys = openOnly ? ['m', 'a', 's'] : ['m', 'a', 's', 'c'];
   const prioEmpty = prioKeys.every((k) => prioCounts[k] === 0);
   const [filters, setFilters] = useState<{ channels: { value: string; label: string }[]; authors: string[]; recipients: string[] }>({ channels: [], authors: [], recipients: [] });
+  const [rules, setRules] = useState<{ id: string; type: string; value: string; label: string }[]>([]);
+  const loadRules = useCallback(() => {
+    fetch('/api/priority-rules').then((r) => r.json()).then((d: any) => setRules(Array.isArray(d) ? d : [])).catch(() => {});
+  }, []);
+  useEffect(() => { loadRules(); }, [loadRules]);
   const [suggestedCount, setSuggestedCount] = useState(0);
   const [savedCount, setSavedCount] = useState(0);
   const [trashCount, setTrashCount] = useState(0);
@@ -127,13 +132,11 @@ export function DashboardClient({ userName }: Props) {
 
   // Фильтры по каналу, человеку и приоритету относятся только к упоминаниям и обещаниям.
   const withFilters = ['mentions', 'active', 'suggested', 'completed'].includes(tab);
-  const priorityChannels = ['it_managers', 'by_it_managers', 'by_pmd_casino'];
-  const priorityChips = [
-    { label: 'it_managers', value: 'it_managers' },
-    { label: 'by_it_managers', value: 'by_it_managers' },
-    { label: 'by_pmd_casino', value: 'by_pmd_casino' },
-    { label: 'Тимур', value: 'Timur Tazhetdinov' },
-  ];
+  // Звёздочки берутся из настроек избранного: правила приоритета по каналам и авторам (треды в фильтры не попадают).
+  const priorityChips = rules
+    .filter((r) => r.type === 'channel' || r.type === 'author')
+    .map((r) => ({ kind: r.type as 'channel' | 'author', label: r.label || r.value, value: r.value }));
+  const priorityChannels = priorityChips.filter((c) => c.kind === 'channel').map((c) => c.value);
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: 'active', label: 'Активные обещания', icon: <ListChecks className="h-4 w-4" /> },
@@ -311,16 +314,16 @@ export function DashboardClient({ userName }: Props) {
           {/* Quick filter chips */}
           {priorityChips.map((chip) => (
             <button
-              key={chip.value}
+              key={`${chip.kind}:${chip.value}`}
               onClick={() => {
-                if (chip.value === 'Timur Tazhetdinov') {
+                if (chip.kind === 'author') {
                   setPerson(person === chip.value ? '' : chip.value);
                 } else {
                   setChannel(channel === chip.value ? '' : chip.value);
                 }
               }}
               className={`px-2.5 py-1 text-xs rounded-full border transition ${
-                channel === chip.value || person === chip.value
+                (chip.kind === 'author' ? person === chip.value : channel === chip.value)
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'border-border text-muted-foreground hover:bg-muted'
               }`}
@@ -428,7 +431,7 @@ export function DashboardClient({ userName }: Props) {
       {showAdd && <AddPromiseModal onClose={() => setShowAdd(false)} onCreated={refresh} />}
       {showAppearance && <AppearanceModal onClose={() => setShowAppearance(false)} />}
       {showConnections && <ConnectionsModal onClose={() => setShowConnections(false)} onSaved={refresh} />}
-      {showSettings && <PrioritySettingsModal onClose={() => setShowSettings(false)} onChanged={refresh} />}
+      {showSettings && <PrioritySettingsModal onClose={() => setShowSettings(false)} onChanged={() => { refresh(); loadRules(); }} />}
     </div>
   );
 }
