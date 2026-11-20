@@ -6,6 +6,7 @@ import { getJiraConfig } from '@/lib/config';
 import { fetchWeeklyActivity, jiraBaseUrl } from '@/lib/jira';
 import { llmChatCompletion } from '@/lib/llm';
 import { readCache, writeCache } from '@/lib/jira-cache';
+import { personalize } from '@/lib/names';
 
 interface ReportIssue {
   key: string;
@@ -33,6 +34,14 @@ async function generate(userId: string, days: number): Promise<NextResponse> {
     if (issues.length === 0) {
       return NextResponse.json({ sections: [], baseUrl: await jiraBaseUrl(userId), total: 0, generatedAt: new Date().toISOString() });
     }
+
+    // Имена людей из данных Jira: по ним остальных сокращаем до «И.Фамилия», а владельца заменяем на «я».
+    const peopleNames = [...new Set<string>(issues.flatMap((i: any) => [
+      i.assignee, i.reporter,
+      ...(i.recentComments ?? []).map((c: any) => c.author),
+      ...(i.recentChanges ?? []).map((c: any) => c.author),
+    ]).filter(Boolean))];
+    const fix = (t: string) => personalize(t ?? '', peopleNames);
 
     // Prepare structured data for LLM — ALL comments per issue, not just the last
     const issueBlocks = issues.map((i: any) => {
@@ -86,6 +95,8 @@ async function generate(userId: string, days: number): Promise<NextResponse> {
 - activity: итоговый статус за период по ВСЕМ комментариям (3-5 предложений утвердительным языком, перечисляя все существенные пункты)
 - nextAction: конкретный план следующих шагов, вытекающий из комментариев
 
+ИМЕНА: если действие совершил Левон Гзирян, пиши от первого лица («я»), а не по имени. Остальных людей пиши в виде «И.Фамилия» (например, «Т.Тажетдинов»), без полного имени.
+
 Ответь строго в JSON:
 {"sections":[{"project":"","issues":[{"key":"","summary":"","status":"","statusChange":"","activity":"","nextAction":""}]}]}
 
@@ -110,6 +121,14 @@ ${chunk.join('\n\n')}`;
       try {
         const parsed = JSON.parse(content);
         if (Array.isArray(parsed.sections)) {
+          for (const sec of parsed.sections) {
+            for (const it of sec?.issues ?? []) {
+              it.activity = fix(it.activity);
+              it.nextAction = fix(it.nextAction);
+              it.statusChange = fix(it.statusChange);
+              it.summary = fix(it.summary);
+            }
+          }
           allSections.push(...parsed.sections);
         }
       } catch {
