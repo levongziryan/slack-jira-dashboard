@@ -454,7 +454,7 @@ export async function POST() {
             });
             incomingSuggested++;
           }
-          await markAnalyzed(uid, freshIn.map((m) => `SI-${m.ts}`));
+          await markAnalyzed(uid, freshIn.filter((_, i) => det.okIdx.has(i)).map((m) => `SI-${m.ts}`));
         }
       }
     } catch (e: any) {
