@@ -14,7 +14,7 @@ const parseKeys = (v: string) => [...new Set(v.split(',').map((x) => x.trim().to
 type Item = {
   key: string;
   label: string;
-  service: 'slack' | 'llm' | 'jira';
+  service: 'slack' | 'llm' | 'jira' | 'sheets';
   secret: boolean;
   hint: string;
   set: boolean;
@@ -26,6 +26,7 @@ const SERVICES: { id: Item['service']; title: string; help: string }[] = [
   { id: 'slack', title: 'Slack', help: 'User OAuth Token (xoxp-...) приложения Slack. Нужные права: search:read, reactions:read, reactions:write, users:read, team:read.' },
   { id: 'llm', title: 'Anthropic (анализ обязательств и отчёты)', help: 'API-ключ из console.anthropic.com. Без него не работают предложения обещаний и недельный отчёт.' },
   { id: 'jira', title: 'Jira', help: 'Адрес сервера и персональный токен доступа (Personal Access Token). Ключи проектов - это код перед номером задачи (в PMD24HS-6163 это PMD24HS). Для каждой вкладки свой список, ключи через запятую. Пустой список: все проекты.' },
+  { id: 'sheets', title: 'Google Таблица (отчёт)', help: 'Адрес веб-приложения Apps Script и секрет из скрипта в таблице. Нужны для кнопки "Заполнить отчёт" на странице "Статусы Jira".' },
 ];
 
 export function ConnectionsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {

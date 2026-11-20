@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { getJiraConfig, getSlackToken } from '@/lib/config';
+import { getJiraConfig, getSheetsConfig, getSlackToken } from '@/lib/config';
 import { jiraFetch } from '@/lib/jira';
 import { llmChatCompletion, llmConfigured } from '@/lib/llm';
 
@@ -34,6 +34,13 @@ export async function POST(request: Request) {
       if (res.ok) return NextResponse.json({ ok: true, detail: 'ключ принят' });
       const d: any = await res.json().catch(() => null);
       return NextResponse.json({ ok: false, detail: `HTTP ${res.status}: ${String(d?.error?.message ?? '').slice(0, 160)}` });
+    }
+    if (service === 'sheets') {
+      const c = await getSheetsConfig(uid);
+      if (!c) return NextResponse.json({ ok: false, detail: 'Адрес или секрет не заданы' });
+      // Пустой запрос с неверным секретом: проверяем только доступность скрипта, в таблицу ничего не пишется.
+      const d: any = await fetch(c.url, { method: 'POST', body: JSON.stringify({ token: '', tab: '', rows: [] }), cache: 'no-store', redirect: 'follow', signal: AbortSignal.timeout(20_000) }).then((r) => r.json()).catch(() => null);
+      return NextResponse.json(d && d.error === 'forbidden' ? { ok: true, detail: 'скрипт отвечает' } : { ok: false, detail: 'скрипт не отвечает: проверьте адрес и доступ "у всех"' });
     }
     return NextResponse.json({ error: 'Неизвестный сервис' }, { status: 400 });
   } catch (e: any) {

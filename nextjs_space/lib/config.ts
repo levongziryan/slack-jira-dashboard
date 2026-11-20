@@ -78,3 +78,10 @@ export function appSecret(): string {
 export function appBaseUrl(): string {
   return (env('NEXTAUTH_URL') || 'http://localhost:3000').replace(/\/+$/, '');
 }
+
+// Веб-приложение Apps Script, которое записывает отчёт в Google Таблицу.
+export async function getSheetsConfig(userId?: string): Promise<{ url: string; token: string } | null> {
+  const url = await value(userId, 'SHEETS_WEBHOOK_URL');
+  const token = await value(userId, 'SHEETS_WEBHOOK_TOKEN');
+  return url && token ? { url, token } : null;
+}

@@ -12,6 +12,8 @@ export const SETTING_DEFS = {
   JIRA_PAT: { secret: true, service: 'jira', label: 'Jira Personal Access Token', pattern: /^[^\s]{8,300}$/, hint: '' },
   JIRA_TASKS_PROJECTS: { secret: false, service: 'jira', label: 'Проекты для вкладки "Задачи Jira" (ключи через запятую)', pattern: /^[A-Z][A-Z0-9_]{1,19}(\s*,\s*[A-Z][A-Z0-9_]{1,19})*$/i, hint: 'ABC, XYZ (пусто: все проекты)' },
   JIRA_REPORT_PROJECTS: { secret: false, service: 'jira', label: 'Проекты для вкладки "Отчет Jira" (ключи через запятую)', pattern: /^[A-Z][A-Z0-9_]{1,19}(\s*,\s*[A-Z][A-Z0-9_]{1,19})*$/i, hint: 'ABC, XYZ (пусто: все проекты)' },
+  SHEETS_WEBHOOK_URL: { secret: false, service: 'sheets', label: 'Адрес веб-приложения Apps Script', pattern: /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/, hint: 'https://script.google.com/macros/s/.../exec' },
+  SHEETS_WEBHOOK_TOKEN: { secret: true, service: 'sheets', label: 'Секрет из скрипта (SECRET)', pattern: /^[^\s]{16,200}$/, hint: '' },
 } as const;
 
 export type SettingKey = keyof typeof SETTING_DEFS;

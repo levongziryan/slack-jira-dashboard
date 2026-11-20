@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw, Copy, ExternalLink, MessageSquarePlus, AlertCircle, Check, Paperclip, Loader2 } from 'lucide-react';
+import { RefreshCw, Copy, ExternalLink, MessageSquarePlus, AlertCircle, Check, Paperclip, Loader2, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { copyText } from '@/lib/clipboard';
 import { selfToI } from '@/lib/names';
@@ -32,6 +32,8 @@ export function StatusesSection({ search }: { search: string }) {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [reporting, setReporting] = useState(false);
+  const [confirmReport, setConfirmReport] = useState(false);
   const stop = useRef(false);
 
   const load = useCallback(async () => {
@@ -97,6 +99,18 @@ export function StatusesSection({ search }: { search: string }) {
     setBusyKey(it.key, false); setConfirm(null);
   };
 
+  const fillReport = async () => {
+    setReporting(true);
+    try {
+      const r = await fetch('/api/jira/statuses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report' }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Ошибка');
+      toast.success(`Отчёт: вкладка ${d.tab}, строк ${d.rows}`);
+      if (d.url) window.open(d.url, '_blank', 'noopener');
+    } catch (e: any) { toast.error(e.message); }
+    setReporting(false); setConfirmReport(false);
+  };
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return q ? issues.filter((i) => `${i.key} ${i.summary}`.toLowerCase().includes(q)) : issues;
@@ -115,6 +129,18 @@ export function StatusesSection({ search }: { search: string }) {
           {generating ? `Генерация ${progress!.done}/${progress!.total}` : 'Сгенерировать статусы'}
         </button>
         {generating && <button onClick={() => { stop.current = true; }} className="text-sm text-muted-foreground underline">Остановить</button>}
+        {confirmReport ? (
+          <>
+            <button onClick={fillReport} disabled={reporting} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">
+              {reporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Создать вкладку в таблице
+            </button>
+            <button onClick={() => setConfirmReport(false)} className="text-sm text-muted-foreground underline">Отмена</button>
+          </>
+        ) : (
+          <button onClick={() => setConfirmReport(true)} disabled={generating || Object.keys(items).length === 0} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-50">
+            <FileSpreadsheet className="h-4 w-4" />Заполнить отчёт
+          </button>
+        )}
         <p className="text-sm text-muted-foreground">Мои открытые задачи {project}: {issues.length}</p>
       </div>
 
