@@ -6,6 +6,7 @@ import { encryptText, decryptText } from '@/lib/crypto';
 export const SETTING_DEFS = {
   SLACK_USER_TOKEN: { secret: true, service: 'slack', label: 'Slack User OAuth Token', pattern: /^xoxp-[A-Za-z0-9-]{10,}$/, hint: 'xoxp-...' },
   SLACK_CHANNELS: { secret: false, service: 'slack', label: 'Каналы для мониторинга (пусто: все)', pattern: /^[CGDM][A-Z0-9]{6,}(\s*,\s*[CGDM][A-Z0-9]{6,})*$/i, hint: 'выберите из списка' },
+  SLACK_STOP_WORDS: { secret: false, service: 'slack', label: 'Стоп-слова: сообщения с ними не учитываются при поиске ожиданий (через запятую)', pattern: /^[\s\S]{1,2000}$/, hint: 'например: дайджест, ежедневный отчёт' },
   ANTHROPIC_API_KEY: { secret: true, service: 'llm', label: 'Anthropic API key', pattern: /^sk-ant-[A-Za-z0-9_-]{10,}$/, hint: 'sk-ant-...' },
   LLM_MODEL: { secret: false, service: 'llm', label: 'Модель', pattern: /^[A-Za-z0-9._-]{3,80}$/, hint: 'claude-haiku-5-5' },
   JIRA_BASE_URL: { secret: false, service: 'jira', label: 'Адрес Jira', pattern: /^https?:\/\/[^\s]+$/, hint: 'https://jira.example.com' },

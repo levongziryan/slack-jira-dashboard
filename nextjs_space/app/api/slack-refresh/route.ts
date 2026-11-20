@@ -2,7 +2,8 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-import { getSlackChannels } from '@/lib/config';
+import { getSlackChannels, getStopWords } from '@/lib/config';
+import { hasStopWord } from '@/lib/stopwords';
 import { getOwnerConnectorToken } from '@/lib/owner-connector';
 import { matchesRules, type Rule } from '@/lib/priority';
 import { fetchReactionMaps, reconcileReactions, removeSavedReactions, resolveUserId, setSlackReaction, threadTsFromPermalink, tsKey } from '@/lib/slack-sync';
@@ -153,7 +154,8 @@ export async function POST() {
     }
     const rules: Rule[] = await prisma.priorityRule.findMany({ where: { userId: uid }, select: { type: true, value: true } });
 
-    const matches = searchData?.messages?.matches ?? [];
+    const stopWords = await getStopWords(uid);
+    const matches = ((searchData?.messages?.matches ?? []) as any[]).filter((m) => !hasStopWord(m?.text, stopWords));
     // Автор: имя по Slack ID (username в поиске - это логин, а не имя человека)
     const authorNames = await resolveSlackNames(
       token,
@@ -196,7 +198,7 @@ export async function POST() {
 
     // 2) Levon's own messages -> detect commitments (promises)
     const ownData = await slackSearchIn(token, `from:<@${userId}>`, allowed);
-    const ownMatches: any[] = ownData?.ok ? ownData?.messages?.matches ?? [] : [];
+    const ownMatches: any[] = (ownData?.ok ? ownData?.messages?.matches ?? [] : []).filter((m: any) => !hasStopWord(m?.text, stopWords));
 
     // Skip messages already turned into a suggestion/promise (stable id S-<ts>)
     const candidateIds = ownMatches.map((m) => `S-${m?.ts}`).filter((x) => x !== 'S-undefined');
@@ -418,7 +420,7 @@ export async function POST() {
       });
       const incAids = ms.map((m) => `SI-${m.ts}`);
       const seen = await loadAnalyzedSet(uid, incAids);
-      const freshIn = ms.filter((m) => !seen.set.has(`SI-${m.ts}`) && m.text.trim().length >= 15).slice(0, 40);
+      const freshIn = ms.filter((m) => !seen.set.has(`SI-${m.ts}`) && m.text.trim().length >= 15 && !hasStopWord(m.text, stopWords)).slice(0, 40);
       if (freshIn.length > 0) {
         const det = await detectPromises(
           freshIn.map((m, i) => ({ i, where: `#${m.channel}`, author: m.author, date: m.datetime.toISOString(), text: slackToPlain(m.text).slice(0, 700) })),
